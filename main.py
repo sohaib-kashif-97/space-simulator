@@ -3,8 +3,8 @@ import asyncio
 import argparse
 import cProfile
 import importlib
-
 from modules.utils import pre_render_text, set_config, ResultSaver
+
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='SPACE (Swarm Planning And Control Evalution) Simulator')
@@ -17,13 +17,13 @@ from modules.utils import config  # Import the global config after setting it
 
 sampling_freq = config['simulation']['sampling_freq']
 sampling_time = 1.0 / sampling_freq  # in seconds
+speed_up_factor = config.get('simulation').get('speed_up_factor', 1)
 max_simulation_time = config.get('simulation').get('max_simulation_time', 0)
 screen_height = config['simulation']['screen_height']
 screen_width = config['simulation']['screen_width']
 gif_recording_fps = config['simulation']['gif_recording_fps']
 profiling_mode = config['simulation']['profiling_mode']
 rendering_mode = config.get('simulation').get('rendering_mode', "Screen")
-speed_up_factor = config.get('simulation').get('speed_up_factor', 1)
 rendering_options = config.get('simulation').get('rendering_options', {})
 
 save_gif = config.get('simulation').get('saving_options').get('save_gif', False)
@@ -77,12 +77,14 @@ result_saver = ResultSaver(args.config)
 
 # Main game loop
 async def game_loop():
+    
+    # Initialize Simulation Status Variables
     running = True
-    clock = pygame.time.Clock()
     game_paused = False
     mission_completed = False
 
     # Initialize simulation time
+    clock = pygame.time.Clock()
     simulation_time = 0.0
     last_print_time = 0.0   # Variable to track the last time tasks_left was printed
 
@@ -122,8 +124,10 @@ async def game_loop():
         if max_simulation_time > 0 and simulation_time > max_simulation_time:
             running = False
 
+        # Run behavior trees for each agent without rendering, if neither simulation is paused nor completed
         if not game_paused and not mission_completed:
-            # Run behavior trees for each agent without rendering
+            
+            # Run behavior trees for each agent
             for agent in agents:
                 await agent.run_tree()    
                 agent.update()
@@ -132,7 +136,7 @@ async def game_loop():
             simulation_time += sampling_time
             tasks_left = sum(1 for task in tasks if not task.completed)
             if tasks_left == 0:
-                mission_completed = not generation_enabled or generation_count == max_generations
+                mission_completed = (not generation_enabled) or (generation_count == max_generations)
 
             # Dynamic task generation
             if generation_enabled and generation_count < max_generations:                
@@ -160,11 +164,11 @@ async def game_loop():
                     tasks_total_amount_left
                 ])
 
-            # Rendering
+            # Rendering the Screen
             if rendering_mode == "Screen":
+
+                # Draw Background / Clear the screen
                 screen.fill(background_color)
-
-
 
                 # Draw agents network topology
                 if rendering_options.get('agent_communication_topology'):
@@ -173,27 +177,26 @@ async def game_loop():
 
                 # Draw agents
                 for agent in agents:                    
-                    if rendering_options.get('agent_path_to_assigned_tasks'): # Draw each agent's path to its assigned tasks
+                    if rendering_options.get('agent_path_to_assigned_tasks'):       # Draw each agent's path to its assigned tasks
                         agent.draw_path_to_assigned_tasks(screen)                    
-                    if rendering_options.get('agent_tail'): # Draw each agent's trajectory tail
+                    if rendering_options.get('agent_tail'):                         # Draw each agent's trajectory tail
                         agent.draw_tail(screen)
-                    if rendering_options.get('agent_id'): # Draw each agent's ID
+                    if rendering_options.get('agent_id'):                           # Draw each agent's ID
                         agent.draw_agent_id(screen)
-                    if rendering_options.get('agent_assigned_task_id'): # Draw each agent's assigned task ID
+                    if rendering_options.get('agent_assigned_task_id'):             # Draw each agent's assigned task ID
                         agent.draw_assigned_task_id(screen)
-                    if rendering_options.get('agent_work_done'): # Draw each agent's assigned task ID
+                    if rendering_options.get('agent_work_done'):                    # Draw each agent's assigned task ID
                         agent.draw_work_done(screen)
-                    if rendering_options.get('agent_situation_awareness_circle'): # Draw each agent's situation awareness radius circle    
+                    if rendering_options.get('agent_situation_awareness_circle'):   # Draw each agent's situation awareness radius circle    
                         agent.draw_situation_awareness_circle(screen)
                     agent.draw(screen)
 
                 # Draw tasks with task_id displayed
                 for task in tasks:
                     task.draw(screen)
-                    if rendering_options.get('task_id'): # Draw each task's ID
+                    if rendering_options.get('task_id'):                            # Draw each task's ID
                         task.draw_task_id(screen)
-                        
-
+                      
                 # Display task quantity and elapsed simulation time                
                 task_time_text = pre_render_text(f'Tasks left: {tasks_left}; Time: {simulation_time:.2f}s', 36, (0, 0, 0))
                 screen.blit(task_time_text, (screen_width - 350, 20))
@@ -207,17 +210,18 @@ async def game_loop():
                     text_rect = mission_completed_text.get_rect(center=(screen_width // 2, screen_height // 2))
                     screen.blit(mission_completed_text, text_rect)
 
-
+                # Update the display
                 pygame.display.flip()
-                clock.tick(sampling_freq*speed_up_factor)
+                clock.tick(sampling_freq * speed_up_factor)
 
                 # Capture frame for recording
                 if recording:
-                    if simulation_time - last_frame_time > 1.0/gif_recording_fps: # Capture frame if 0.5 seconds elapsed
+                    if simulation_time - last_frame_time > (1.0 / gif_recording_fps): # Capture frame if 0.5 seconds elapsed
                         frame = pygame.surfarray.array3d(screen)
                         frames.append(frame)            
                         last_frame_time = simulation_time                
 
+            # Rendering the Terminal Output
             elif rendering_mode == "Terminal": 
                 print(f'[{simulation_time:.2f}] Tasks left: {tasks_left}')
                 if simulation_time - last_print_time > 0.5:                    
@@ -226,12 +230,12 @@ async def game_loop():
                 if mission_completed:                    
                     print(f'MISSION COMPLETED')
                     running = False
-            else: # if rendering_mode is None
+            
+            # If 'rendering_mode' is None
+            else: 
                 if mission_completed:
                     print(f'[{simulation_time:.2f}] MISSION COMPLETED')
                     running = False
-
-
 
     pygame.quit()
 
@@ -258,8 +262,10 @@ async def game_loop():
     if save_config_yaml:                
         result_saver.save_config_yaml()    
 
+
 def main():
     asyncio.run(game_loop())
+
 
 # Run the game
 if __name__ == "__main__":    

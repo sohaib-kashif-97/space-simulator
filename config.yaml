@@ -10,6 +10,7 @@ decision_making: # Case 2
   plugin: plugins.cbba.cbba.CBBA
   CBBA:  
     max_tasks_per_agent: 5 
+    execute_movements_during_convergence: False   
     task_reward_discount_factor: 0.999 
     winning_bid_cancel: True
     acceptable_empty_bundle_duration: 500 # sec
@@ -30,7 +31,7 @@ agents:
     x_max: 1400
     y_min: 0
     y_max: 1000
-    non_overlap_radius: 0 
+    non_overlap_radius: 50 #CHANGED
   max_speed: 0.25  
   max_accel: 0.05
   max_angular_speed: 0.25

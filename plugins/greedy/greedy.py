@@ -1,6 +1,7 @@
 import random
 import pygame
 from modules.utils import config
+
 MODE = config['decision_making']['FirstClaimGreedy']['mode']
 W_FACTOR_COST = config['decision_making']['FirstClaimGreedy']['weight_factor_cost']
 ENFORCED_COLLABORATION = config['decision_making']['FirstClaimGreedy'].get('enforced_collaboration', False)
@@ -9,6 +10,7 @@ class FirstClaimGreedy: # Task selection within each agent's `situation_awarenes
     def __init__(self, agent):
         self.agent = agent
         self.assigned_task = None
+
 
     def decide(self, blackboard):
         # Place your decision-making code for each agent
@@ -68,6 +70,7 @@ class FirstClaimGreedy: # Task selection within each agent's `situation_awarenes
         
         return self.assigned_task.task_id  
 
+
     def filter_unassigned_tasks_from_neighbor_messages(self, tasks_info):
         occupied_tasks_id = []
         for message in self.agent.messages_received:
@@ -86,6 +89,7 @@ class FirstClaimGreedy: # Task selection within each agent's `situation_awarenes
         _min_task_id = min(_tasks_distance, key=_tasks_distance.get)
         return _min_task_id
 
+
     def find_max_utility_task(self, tasks_info):
         _current_utilities = {
             task.task_id: self.compute_utility(task) if not task.completed else float('-inf')
@@ -95,13 +99,15 @@ class FirstClaimGreedy: # Task selection within each agent's `situation_awarenes
         _max_task_id = max(_current_utilities, key=_current_utilities.get)        
 
         return _max_task_id
-    
+
+
     def compute_utility(self, task): # Individual Utility Function  
         if task is None:
             return float('-inf')
 
         distance = (self.agent.position - task.position).length()        
         return task.amount - W_FACTOR_COST * distance
+ 
     
     def compute_distance(self, task): # Individual Utility Function  
         if task is None:

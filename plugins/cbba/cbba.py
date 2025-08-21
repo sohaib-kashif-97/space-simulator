@@ -21,26 +21,22 @@ class Phase(Enum):
 
 class CBBA:  
     def __init__(self, agent):
-        self.agent = agent        
-
-        self.z = {} # Winning agent list (key: task_id; value: agent_id)
-        self.y = {} # Winning bid list (key: task_id; value: bid value)
-        self.s = {} # Time stamp list (key: agent_id; value: time stamp)
-        self.bundle = [] # Bundle (a list of task id)      
-        self.path = [] # Path (a list of task object) 
-
+        self.agent = agent          # One agent subjected to CBBA decision-making
+        self.bundle = []            # Bundle (a list of task id)      
+        self.path = []              # Path (a list of task object) 
+        self.z = {}                 # Winning agent dict (key: task_id; value: agent_id)
+        self.y = {}                 # Winning bid dict   (key: task_id; value: bid value)
+        self.s = {}                 # Time stamp dict    (key: agent_id; value: time stamp)
         self.phase = Phase.BUILD_BUNDLE
-
         self.agent.message_to_share = { # Message Initialization
             'agent_id': self.agent.agent_id,
             'winning_agents': self.z, 
             'winning_bids': self.y,
             'message_received_time_stamp': self.s
-            } 
-        
-        
+            }         
         self.assigned_task = None
         self.no_bundle_duration = 0
+
 
     def decide(self, blackboard):
         # Place your decision-making code for each agent
@@ -238,7 +234,8 @@ class CBBA:
         else:
             self.agent.reset_movement()  # Neutralise the agent's current movement during converging to a consensus
             return None
-    
+
+
     def _update(self, task_id, y_k, z_k):
         self.y[task_id] = y_k[task_id]   # Winning bid update
         self.z[task_id] = z_k[task_id]   # Winning agent update
@@ -248,8 +245,10 @@ class CBBA:
         self.y[task_id] = 0     # Winning bid reset
         self.z[task_id] = None  # Winning agent reset
 
+
     def _leave(self):
         pass
+
 
     def update_bundle_and_path(self):
         _n_bar = len(self.bundle)
@@ -263,9 +262,7 @@ class CBBA:
 
         return _bundle, _path
 
-        
-
-
+ 
     def build_bundle(self, local_tasks_info):
         """
         Construct bundle and path list with local information.
@@ -320,8 +317,6 @@ class CBBA:
         self.s = merge_dicts(self.s, max_timestamp)
         
 
-
-
     def get_my_bid_value_list(self, local_tasks_info):
         # Calculate S_p for the constructed path list
         S_p = self.calculate_score_along_path(self.agent.position, self.path)
@@ -346,6 +341,7 @@ class CBBA:
 
         return my_bid_list, best_insertion_idx_list
     
+
     def get_alternative_path(self, path, task, idx):
         # _new_path = copy.deepcopy(path)
         _new_path = path[:] # Creates a shallow copy of the list
@@ -359,7 +355,8 @@ class CBBA:
         
         except IndexError as e:
             print(f"Error: {e}")        
-        
+
+
     def get_best_task(self, my_bid_list):
         """
         [Output] task object
@@ -379,6 +376,7 @@ class CBBA:
 
 
         return self.agent.tasks_info[best_task_id] if best_task_score > float('-inf') else None
+
 
     def calculate_score_along_path(self, agent_position, path): 
         """

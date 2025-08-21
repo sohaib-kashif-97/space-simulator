@@ -108,6 +108,7 @@ class CBAA:
         LAMBDA = 0.999
         expected_reward = LAMBDA**(distance_to_task/self.agent.max_speed + task.amount/self.agent.work_rate)*task.amount          
         return expected_reward
+
     
     def update_dict_based_on_comparison(my_dict, other_dict):
         my_dict_updated = {}

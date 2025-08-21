@@ -5,9 +5,6 @@ decision_making: # Case 3
     weight_factor_cost: 10000.0 # Only used for `MaxUtil` mode
     enforced_collaboration: False    
 
-
-
-
 agents:
   behavior_tree_xml: default_bt.xml 
   quantity: 10

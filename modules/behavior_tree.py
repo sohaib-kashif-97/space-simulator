@@ -1,6 +1,9 @@
 from enum import Enum
 import math
 import random
+
+
+
 # BT Node List
 class BehaviorTreeList:
     CONTROL_NODES = [        
@@ -22,6 +25,7 @@ class Status(Enum):
     FAILURE = 2
     RUNNING = 3
 
+
 # Base class for all behavior tree nodes
 class Node:
     def __init__(self, name):
@@ -29,6 +33,7 @@ class Node:
 
     async def run(self, agent, blackboard):
         raise NotImplementedError
+
 
 # Sequence node: Runs child nodes in sequence until one fails
 class Sequence(Node):
@@ -45,6 +50,7 @@ class Sequence(Node):
                 return status
         return Status.SUCCESS
 
+
 # Fallback node: Runs child nodes in sequence until one succeeds
 class Fallback(Node):
     def __init__(self, name, children):
@@ -60,6 +66,7 @@ class Fallback(Node):
                 return status
         return Status.FAILURE
 
+
 # Synchronous action node
 class SyncAction(Node):
     def __init__(self, name, action):
@@ -70,6 +77,7 @@ class SyncAction(Node):
         result = self.action(agent, blackboard)
         blackboard[self.name] = result
         return result
+
 
 # Load additional configuration and import decision-making class dynamically
 import importlib
@@ -86,6 +94,7 @@ module_path, class_name = decision_making_module_path.rsplit('.', 1)
 decision_making_module = importlib.import_module(module_path)
 decision_making_class = getattr(decision_making_module, class_name)
 
+
 # Local Sensing node
 class LocalSensingNode(SyncAction):
     def __init__(self, name, agent):
@@ -97,6 +106,7 @@ class LocalSensingNode(SyncAction):
 
         return Status.SUCCESS
     
+
 # Decision-making node
 class DecisionMakingNode(SyncAction):
     def __init__(self, name, agent):
@@ -161,4 +171,3 @@ class ExplorationNode(SyncAction):
         pos = (random.randint(x_min, x_max),
                 random.randint(y_min, y_max))
         return pos
-    

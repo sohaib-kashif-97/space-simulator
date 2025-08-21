@@ -11,6 +11,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
+
+
 def load_config(config_file):
     with open(config_file, 'r') as f:
         return yaml.safe_load(f)
@@ -27,6 +29,7 @@ def pre_render_text(text, font_size, color):
     font = pygame.font.Font(None, font_size)
     return font.render(text, True, color)
 
+
 def generate_positions(quantity, x_min, x_max, y_min, y_max, radius=10):
     positions = []
     while len(positions) < quantity:
@@ -39,7 +42,6 @@ def generate_positions(quantity, x_min, x_max, y_min, y_max, radius=10):
             positions.append(pos)
     return positions
 
-
 # Generate task_colors based on tasks.quantity
 def generate_task_colors(quantity):
     colors = cm.get_cmap('tab20', quantity)  # 'tab20' is a colormap with 20 distinct colors
@@ -48,9 +50,6 @@ def generate_task_colors(quantity):
         color = colors(i)  # Get color from colormap
         task_colors[i] = (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))  # Convert to RGB tuple
     return task_colors
-
-
-
 
 # BT xml
 def parse_behavior_tree(xml_path):
@@ -75,6 +74,7 @@ def merge_dicts(dict1, dict2):
     return merged_dict    
 
 
+
 # Results saving
 class ResultSaver:
     def __init__(self, config_file_path):
@@ -84,6 +84,7 @@ class ResultSaver:
         self.agentwise_result_file_path = self.generate_output_filename(additional_keyword="agentwise")
         self.df_timewise_result = None
         self.df_agentwise_result = None
+
 
     def generate_output_filename(self, extension = "csv", additional_keyword = None):
         agent_quantity = config['agents']['quantity']
@@ -108,11 +109,11 @@ class ResultSaver:
 
         return file_path
 
+
     def change_file_extension(self, file_path, new_extension):
         base, _ = os.path.splitext(file_path)  # Split the file path into base and extension
         new_file_path = f"{base}.{new_extension}"  # Combine base with new extension
         return new_file_path
-
 
 
     def save_gif(self, frames):
@@ -131,11 +132,13 @@ class ResultSaver:
             # imageio.mimsave(gif_file_path, frames)
             print(f"Saved GIF: {gif_file_path}")            
 
+
     def save_config_yaml(self):
         # Copy config.yaml to the result directory                 
         yaml_file_path = self.change_file_extension(self.result_file_path, "yaml")    
         shutil.copy(self.config_file_path, yaml_file_path)
         print(f"Copied {self.config_file_path} to: {yaml_file_path}")        
+
 
     def save_to_csv(self, type, data_records, data_labels):
         """
@@ -160,6 +163,7 @@ class ResultSaver:
         df.to_csv(csv_file_path, index=False)    
             
         return csv_file_path
+
 
     def plot_timewise_result(self, csv_file_path):
         # Read the CSV file
@@ -209,6 +213,7 @@ class ResultSaver:
         
         plt.savefig(img_file_path)
         # plt.show()
+
 
     def plot_boxplot(self, csv_file_path, columns):
         """
