@@ -8,7 +8,7 @@ from modules.utils import pre_render_text, set_config, ResultSaver
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='SPACE (Swarm Planning And Control Evalution) Simulator')
-parser.add_argument('--config', type=str, default='config.yaml', help='Path to the configuration file (default: --config=config.yaml)')
+parser.add_argument('--config', type=str, default='new_sim_config.yaml', help='Path to the configuration file (default: --config=config.yaml)')
 args = parser.parse_args()
 
 # Load configuration

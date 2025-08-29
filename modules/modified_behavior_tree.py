@@ -114,7 +114,6 @@ class DecisionMakingNode(SyncAction):
         else:                        
             return Status.SUCCESS
 
-
 # Task executing node
 class TaskExecutingNode(SyncAction):
     def __init__(self, name, agent):
@@ -139,7 +138,6 @@ class TaskExecutingNode(SyncAction):
             agent.follow(next_waypoint)
 
         return Status.RUNNING
-
 
 # Exploration node
 class ExplorationNode(SyncAction):
