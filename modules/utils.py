@@ -13,22 +13,26 @@ import xml.etree.ElementTree as ET
 
 
 
+''' Global Configuration Handling '''
+
+config = None
+
 def load_config(config_file):
     with open(config_file, 'r') as f:
         return yaml.safe_load(f)
-
-# Global variable to hold the configuration
-config = None
 
 def set_config(config_file):
     global config
     config = load_config(config_file)
 
+
+
+''' Utility Functions for Simulation '''
+
 # Pre-render static elements
 def pre_render_text(text, font_size, color):
     font = pygame.font.Font(None, font_size)
     return font.render(text, True, color)
-
 
 def generate_positions(quantity, x_min, x_max, y_min, y_max, radius=10):
     positions = []
@@ -50,6 +54,7 @@ def generate_task_colors(quantity):
         color = colors(i)  # Get color from colormap
         task_colors[i] = (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))  # Convert to RGB tuple
     return task_colors
+
 
 # BT xml
 def parse_behavior_tree(xml_path):

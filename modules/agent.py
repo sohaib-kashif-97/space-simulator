@@ -52,10 +52,13 @@ class Agent:
         self.task_amount_done = 0.0        
 
 
+    '''
+    Methods interacting with Agent's Behavior Tree
+    '''
     def create_behavior_tree(self):
         self.tree = self._create_behavior_tree()
 
-    # Agent's Behavior Tree
+    
     def _create_behavior_tree(self):
         behavior_tree = self._parse_xml_to_bt(xml_root.find('BehaviorTree'))
         return behavior_tree        
@@ -90,6 +93,9 @@ class Agent:
         return await self.tree.run(self, self.blackboard)
 
 
+    '''
+    Methods for Agent's Kinematics
+    '''
     def follow(self, target):
         # Calculate desired velocity
         desired = target - self.position
@@ -152,6 +158,9 @@ class Agent:
         return vector
 
 
+    '''
+    Methods for Agent's Communication and Interaction
+    '''
     def local_message_receive(self):
         self.agents_nearby = self.get_agents_nearby()
         for other_agent in self.agents_nearby:
@@ -170,6 +179,9 @@ class Agent:
         self.messages_received.append(message)            
 
 
+    '''
+    Methods for Agent's Visualization
+    '''
     def draw(self, screen):
         size = 10
         angle = self.rotation
@@ -267,6 +279,9 @@ class Agent:
         self.color = task_colors.get(self.assigned_task_id, (20, 20, 20))  # Default to Dark Grey if no task is assigned
 
 
+    '''
+    Methods for Agent's Communication and Interaction
+    '''
     def set_assigned_task_id(self, task_id):
         self.assigned_task_id = task_id
 

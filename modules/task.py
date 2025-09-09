@@ -23,6 +23,9 @@ class Task:
         self.color = task_colors.get(self.task_id, (0, 0, 0))  # Default to black if task_id not found
 
 
+    '''
+    Methods for Task Completion
+    '''
     def set_done(self):
         self.completed = True
 
@@ -33,6 +36,9 @@ class Task:
             self.set_done()
 
 
+    '''
+    Methods for Task Visualization
+    '''
     def draw(self, screen):
         self.radius = self.amount / config['simulation']['task_visualisation_factor']        
         if not self.completed:
