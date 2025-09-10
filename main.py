@@ -170,7 +170,7 @@ async def game_loop():
                 # Draw Background / Clear the screen
                 screen.fill(background_color)
 
-                # Draw agents network topology
+                # Draw Agent Network Topology
                 if rendering_options.get('agent_communication_topology'):
                     for agent in agents:
                         agent.draw_communication_topology(screen, agents)

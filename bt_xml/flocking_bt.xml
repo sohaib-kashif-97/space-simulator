@@ -1,0 +1,17 @@
+<BehaviorTree>
+    <Root>
+        <Selector>
+            <!-- Check if flock is near a task -->
+            <Sequence>
+                <IsFlockNearTask/>
+                <SeparateFromFlock/>
+            </Sequence>
+            <!-- Default flocking behavior -->
+            <FlockTogether>
+                <AlignWithFlock/>
+                <CohereWithFlock/>
+                <SeparateIfTooClose/>
+            </FlockTogether>
+        </Selector>
+    </Root>
+</BehaviorTree>

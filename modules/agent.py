@@ -32,33 +32,45 @@ class Agent:
         self.max_accel = agent_max_accel
         self.max_angular_speed = max_angular_speed
         self.work_rate = work_rate
-        self.memory_location = []       # To draw track
-        self.rotation = 0               # Initial rotation
-        self.color = (0, 0, 255)        # Blue color
+        self.memory_location = []                                           # To draw track
+        self.rotation = 0                                                   # Initial rotation
+        self.color = (0, 0, 255)                                            # Blue color
         self.blackboard = {}
 
-        self.tasks_info = tasks_info    # global info
-        self.agents_info = None         # global info
+        self.tasks_info = tasks_info                                        # global info
+        self.agents_info = None                                             # global info
         self.communication_radius = agent_communication_radius
         self.situation_awareness_radius = agent_situation_awareness_radius
         self.agents_nearby = []
         self.message_to_share = {}
         self.messages_received = []
 
-        self.assigned_task_id = None         # Local decision-making result.
-        self.planned_tasks = []              # Local decision-making result.
+        self.assigned_task_id = None                                        # Local decision-making result --> ID
+        self.planned_tasks = []                                             # Local decision-making result --> Task objects for visualization
         
-        self.distance_moved = 0.0
+        self.distance_moved = 0.0                                           # Recorded Evaluation Metrics
         self.task_amount_done = 0.0        
+
 
 
     '''
     Methods interacting with Agent's Behavior Tree
     '''
+    async def run_tree(self):
+        #Asynchronoursly reset and then run BT (parse tree from xml file)
+        self._reset_bt_action_node_status()
+        return await self.tree.run(self, self.blackboard)       # Trigger the behavior tree execution?
+
+
+    def _reset_bt_action_node_status(self):
+        action_nodes = BehaviorTreeList.ACTION_NODES
+        self.blackboard = {key: None if key in action_nodes else value for key, value in self.blackboard.items()}
+
+
     def create_behavior_tree(self):
         self.tree = self._create_behavior_tree()
 
-    
+
     def _create_behavior_tree(self):
         behavior_tree = self._parse_xml_to_bt(xml_root.find('BehaviorTree'))
         return behavior_tree        
@@ -83,41 +95,32 @@ class Agent:
             raise ValueError(f"[ERROR] Unknown behavior node type: {node_type}")    
 
 
-    def _reset_bt_action_node_status(self):
-        action_nodes = BehaviorTreeList.ACTION_NODES
-        self.blackboard = {key: None if key in action_nodes else value for key, value in self.blackboard.items()}
+
+    '''
+    Methods for Agent's Communication
+    '''
+    def local_message_receive(self):
+        self.agents_nearby = self.get_agents_nearby()
+        for other_agent in self.agents_nearby:
+            if other_agent.agent_id != self.agent_id:                         
+                self.receive_message(other_agent.message_to_share)
+                # other_agent.receive_message(self.message_to_share)                          
+
+        return self.agents_nearby
 
 
-    async def run_tree(self):
-        self._reset_bt_action_node_status()
-        return await self.tree.run(self, self.blackboard)
+    def reset_messages_received(self):
+        self.messages_received = []
+
+
+    def receive_message(self, message):
+        self.messages_received.append(message)  
+
 
 
     '''
     Methods for Agent's Kinematics
     '''
-    def follow(self, target):
-        # Calculate desired velocity
-        desired = target - self.position
-        d = desired.length()
-
-        if d < agent_approaching_to_target_radius:
-            # Apply arrival behavior
-            desired.normalize_ip()
-            desired *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
-        else:
-            desired.normalize_ip()
-            desired *= self.max_speed
-
-        steer = desired - self.velocity
-        steer = self.limit(steer, self.max_accel)
-        self.applyForce(steer)
-
-
-    def applyForce(self, force):
-        self.acceleration += force
-
-
     def update(self):
         # Update velocity and position
         self.velocity += self.acceleration * sampling_time
@@ -156,27 +159,29 @@ class Agent:
         if vector.length_squared() > max_value**2:
             vector.scale_to_length(max_value)
         return vector
+    
+
+    def follow(self, target):
+        # Calculate desired velocity
+        desired = target - self.position
+        d = desired.length()
+
+        if d < agent_approaching_to_target_radius:
+            # Apply arrival behavior
+            desired.normalize_ip()
+            desired *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
+        else:
+            desired.normalize_ip()
+            desired *= self.max_speed
+
+        steer = desired - self.velocity
+        steer = self.limit(steer, self.max_accel)
+        self.applyForce(steer)
 
 
-    '''
-    Methods for Agent's Communication and Interaction
-    '''
-    def local_message_receive(self):
-        self.agents_nearby = self.get_agents_nearby()
-        for other_agent in self.agents_nearby:
-            if other_agent.agent_id != self.agent_id:                         
-                self.receive_message(other_agent.message_to_share)
-                # other_agent.receive_message(self.message_to_share)                          
+    def applyForce(self, force):
+        self.acceleration += force
 
-        return self.agents_nearby
-
-
-    def reset_messages_received(self):
-        self.messages_received = []
-
-
-    def receive_message(self, message):
-        self.messages_received.append(message)            
 
 
     '''
@@ -279,8 +284,9 @@ class Agent:
         self.color = task_colors.get(self.assigned_task_id, (20, 20, 20))  # Default to Dark Grey if no task is assigned
 
 
+
     '''
-    Methods for Agent's Communication and Interaction
+    Methods for Agent's Interaction
     '''
     def set_assigned_task_id(self, task_id):
         self.assigned_task_id = task_id

@@ -55,13 +55,11 @@ def generate_task_colors(quantity):
         task_colors[i] = (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))  # Convert to RGB tuple
     return task_colors
 
-
 # BT xml
 def parse_behavior_tree(xml_path):
     tree = ET.parse(xml_path)
     root = tree.getroot()
     return root
-    
 
 def merge_dicts(dict1, dict2):
     # 두 개의 딕셔너리를 복사하여 합칠 딕셔너리를 초기화합니다.
