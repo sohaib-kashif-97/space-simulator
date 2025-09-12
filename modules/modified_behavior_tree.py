@@ -1,82 +1,15 @@
-from enum import Enum
 import math
 import random
 import pygame
-# BT Node List
-class BehaviorTreeList:
-    CONTROL_NODES = [        
-        'Sequence',
-        'Fallback'
-    ]
-
-    ACTION_NODES = [
-        'LocalSensingNode',
-        'DecisionMakingNode',
-        'TaskExecutingNode',
-        'ExplorationNode',
-        'ReturnToBaseNode'  # Added        
-    ]
-
-
-# Status enumeration for behavior tree nodes
-class Status(Enum):
-    SUCCESS = 1
-    FAILURE = 2
-    RUNNING = 3
-
-# Base class for all behavior tree nodes
-class Node:
-    def __init__(self, name):
-        self.name = name
-
-    async def run(self, agent, blackboard):
-        raise NotImplementedError
-
-# Sequence node: Runs child nodes in sequence until one fails
-class Sequence(Node):
-    def __init__(self, name, children):
-        super().__init__(name)
-        self.children = children
-
-    async def run(self, agent, blackboard):
-        for child in self.children:
-            status = await child.run(agent, blackboard)
-            if status == Status.RUNNING:
-                continue
-            if status != Status.SUCCESS:
-                return status
-        return Status.SUCCESS
-
-# Fallback node: Runs child nodes in sequence until one succeeds
-class Fallback(Node):
-    def __init__(self, name, children):
-        super().__init__(name)
-        self.children = children
-
-    async def run(self, agent, blackboard):
-        for child in self.children:
-            status = await child.run(agent, blackboard)
-            if status == Status.RUNNING:
-                continue
-            if status != Status.FAILURE:
-                return status
-        return Status.FAILURE
-
-# Synchronous action node
-class SyncAction(Node):
-    def __init__(self, name, action):
-        super().__init__(name)
-        self.action = action
-
-    async def run(self, agent, blackboard):
-        result = self.action(agent, blackboard)
-        blackboard[self.name] = result
-        return result
-
-# Load additional configuration and import decision-making class dynamically
 import importlib
 from modules.utils import config
+
+# Load additional configuration and import decision-making class dynamically
+from nodes.NLib import Status, Node, Sequence, Fallback, SyncAction
 from plugins.my_decision_making_plugin import *
+
+
+
 target_arrive_threshold = config['tasks']['threshold_done_by_arrival']
 task_locations = config['tasks']['locations']
 sampling_freq = config['simulation']['sampling_freq']
@@ -87,6 +20,27 @@ decision_making_module_path = config['decision_making']['plugin']
 module_path, class_name = decision_making_module_path.rsplit('.', 1)
 decision_making_module = importlib.import_module(module_path)
 decision_making_class = getattr(decision_making_module, class_name)
+
+
+
+# BT Node List
+class BehaviorTreeList:
+    CONTROL_NODES = [        
+        'Sequence',
+        'Fallback'
+    ]
+
+    ACTION_NODES = [
+        'HybridLocomotionNode',
+        'FlockingNode',
+        'StayWithinBoundsNode'
+        # 'LocalSensingNode',
+        # 'DecisionMakingNode',
+        # 'TaskExecutingNode',
+        # 'ExplorationNode',
+        # 'ReturnToBaseNode'         
+    ]
+
 
 # Local Sensing node
 class LocalSensingNode(SyncAction):
@@ -162,6 +116,7 @@ class ExplorationNode(SyncAction):
                 random.randint(y_min, y_max))
         return pos
 
+
 class ReturnToBaseNode(SyncAction):
     def __init__(self, name, agent):
         super().__init__(name, self._return_to_base)
@@ -184,4 +139,40 @@ class ReturnToBaseNode(SyncAction):
             
         # If the task is not completed, return ``FAILURE`` to allow the rest of the BT to continue
         return Status.FAILURE
+
+
+class FlockingNode(SyncAction):
+    def __init__(self, name, agent):
+        super().__init__(name, self._flocking)
+
+    def _flocking(self, agent, blackboard):
+        pass
+    
+class HybridLocomotionNode(SyncAction):
+    def __init__(self, name, agent):
+        super().__init__(name, self._hybrid_locomotion)
+
+    def _hybrid_locomotion(self, agent, blackboard):
+        pass
+    
+
+class StayWithinBoundsNode(SyncAction):
+    def __init__(self, name, agent):
+        super().__init__(name, self._stay_within_bounds)
+        self.x_min = task_locations['x_min']
+        self.x_max = task_locations['x_max']
+        self.y_min = task_locations['y_min']
+        self.y_max = task_locations['y_max']
+
+    def _stay_within_bounds(self, agent, blackboard):
+        # Check if the agent is within bounds
+        pos = agent.position
+        if not (self.x_min <= pos.x <= self.x_max and self.y_min <= pos.y <= self.y_max):
+            # Move the agent back within bounds
+            new_x = min(max(pos.x, self.x_min), self.x_max)
+            new_y = min(max(pos.y, self.y_min), self.y_max)
+            agent.follow((new_x, new_y))
+            return Status.RUNNING
+        
+        return Status.SUCCESS
         

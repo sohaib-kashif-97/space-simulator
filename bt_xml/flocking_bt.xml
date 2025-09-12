@@ -1,4 +1,15 @@
-<BehaviorTree>
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+  <BehaviorTree ID="flocking-bt">
+    <Sequence>
+        <HybridLocomotionNode/>
+        <FlockingNode/>
+        <StayWithinBoundsNode/>
+    </Sequence>
+  </BehaviorTree>
+
+
+<!-- <BehaviorTree>
     <Root>
         <Selector>
             <!-- Check if flock is near a task -->
@@ -14,4 +25,4 @@
             </FlockTogether>
         </Selector>
     </Root>
-</BehaviorTree>
+</BehaviorTree> -->

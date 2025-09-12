@@ -154,7 +154,7 @@ class ExplorationNode(SyncAction):
     def __init__(self, name, agent):
         super().__init__(name, self._random_explore)
         self.random_move_time = float('inf')
-        self.random_waypoint = (0, 0)
+        self.random_waypoint = (0, 0) 
 
     def _random_explore(self, agent, blackboard):
         # Move towards a random position
