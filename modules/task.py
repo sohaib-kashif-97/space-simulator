@@ -12,6 +12,23 @@ sampling_freq = config['simulation']['sampling_freq']
 sampling_time = 1.0 / sampling_freq  # in seconds
 
 
+def generate_tasks(task_quantity=None, task_id_start = 0):
+    
+    if task_quantity is None:
+        task_quantity = config['tasks']['quantity']        
+    task_locations = config['tasks']['locations']
+    tasks_positions = generate_positions(task_quantity,
+                                        task_locations['x_min'],
+                                        task_locations['x_max'],
+                                        task_locations['y_min'],
+                                        task_locations['y_max'],
+                                        radius=task_locations['non_overlap_radius'])
+
+    # Initialize tasks
+    tasks = [Task(idx + task_id_start, pos) for idx, pos in enumerate(tasks_positions)]
+    return tasks
+
+
 
 class Task:
     def __init__(self, task_id, position):
@@ -50,21 +67,3 @@ class Task:
             font = pygame.font.Font(None, 15)
             text_surface = font.render(f"task_id {self.task_id}: {self.amount:.2f}", True, (250, 250, 250))
             screen.blit(text_surface, (self.position[0], self.position[1]))
-
-
-
-def generate_tasks(task_quantity=None, task_id_start = 0):
-    
-    if task_quantity is None:
-        task_quantity = config['tasks']['quantity']        
-    task_locations = config['tasks']['locations']
-    tasks_positions = generate_positions(task_quantity,
-                                        task_locations['x_min'],
-                                        task_locations['x_max'],
-                                        task_locations['y_min'],
-                                        task_locations['y_max'],
-                                        radius=task_locations['non_overlap_radius'])
-
-    # Initialize tasks
-    tasks = [Task(idx + task_id_start, pos) for idx, pos in enumerate(tasks_positions)]
-    return tasks

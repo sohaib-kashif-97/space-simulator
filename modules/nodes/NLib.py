@@ -56,4 +56,33 @@ class SyncAction(Node):
         blackboard[self.name] = result
         return result
 
+# Condition node
+class Condition(Node):
+    def __init__(self, name, condition_func):
+        super().__init__(name)
+        self.condition_func = condition_func
+
+    async def run(self, agent, blackboard):
+        result = self.condition_func(agent, blackboard)
+        # Conditions should return SUCCESS or FAILURE only
+        return Status.SUCCESS if result else Status.FAILURE
+    
+# Base Decorator node
+class Decorator(Node):
+    def __init__(self, name, child):
+        super().__init__(name)
+        self.child = child
+
+# Inverter Decorator Node
+class Inverter(Decorator):
+    def __init__(self, name, child):
+        super().__init__(name, child)
+
+    async def run(self, agent, blackboard):
+        status = await self.child.run(agent, blackboard)
+        if status == Status.SUCCESS:
+            return Status.FAILURE
+        elif status == Status.FAILURE:
+            return Status.SUCCESS
+        return status
         

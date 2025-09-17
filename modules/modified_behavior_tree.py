@@ -5,17 +5,16 @@ import importlib
 from modules.utils import config
 
 # Load additional configuration and import decision-making class dynamically
-from nodes.NLib import Status, Node, Sequence, Fallback, SyncAction
+from modules.nodes.NLib import Status, Node, Sequence, Fallback, SyncAction
 from plugins.my_decision_making_plugin import *
-
-
 
 target_arrive_threshold = config['tasks']['threshold_done_by_arrival']
 task_locations = config['tasks']['locations']
 sampling_freq = config['simulation']['sampling_freq']
 sampling_time = 1.0 / sampling_freq  # in seconds
-agent_max_random_movement_duration = config.get('agents', {}).get('random_exploration_duration', None)
 
+agent_max_random_movement_duration = config.get('agents', {}).get('random_exploration_duration', None)
+flocking_condition = config['agents']['flocking']['enabled']
 decision_making_module_path = config['decision_making']['plugin']
 module_path, class_name = decision_making_module_path.rsplit('.', 1)
 decision_making_module = importlib.import_module(module_path)
@@ -31,14 +30,13 @@ class BehaviorTreeList:
     ]
 
     ACTION_NODES = [
-        'HybridLocomotionNode',
-        'FlockingNode',
-        'StayWithinBoundsNode'
+        # 'ReturnToBaseNode', 
+        'StayWithinBoundsNode',
         # 'LocalSensingNode',
         # 'DecisionMakingNode',
         # 'TaskExecutingNode',
-        # 'ExplorationNode',
-        # 'ReturnToBaseNode'         
+        'ExplorationNode',   
+        # 'FlockingNode',     
     ]
 
 
@@ -50,7 +48,7 @@ class LocalSensingNode(SyncAction):
     def _local_sensing(self, agent, blackboard):        
         blackboard['local_tasks_info'] = agent.get_tasks_nearby(with_completed_task = False)
         blackboard['local_agents_info'] = agent.local_message_receive()
-
+        print(blackboard)
         return Status.SUCCESS
     
 # Decision-making node
@@ -78,6 +76,7 @@ class TaskExecutingNode(SyncAction):
         if assigned_task_id is not None:
             agent_position = agent.position
             next_waypoint = agent.tasks_info[assigned_task_id].position
+            
             # Calculate norm2 distance
             distance = math.sqrt((next_waypoint[0] - agent_position[0])**2 + (next_waypoint[1] - agent_position[1])**2)
             
@@ -93,30 +92,7 @@ class TaskExecutingNode(SyncAction):
 
         return Status.RUNNING
 
-# Exploration node
-class ExplorationNode(SyncAction):
-    def __init__(self, name, agent):
-        super().__init__(name, self._random_explore)
-        self.random_move_time = float('inf')
-        self.random_waypoint = (0, 0)
-
-    def _random_explore(self, agent, blackboard):
-        # Move towards a random position
-        if self.random_move_time > agent_max_random_movement_duration:
-            self.random_waypoint = self.get_random_position(task_locations['x_min'], task_locations['x_max'], task_locations['y_min'], task_locations['y_max'])
-            self.random_move_time = 0 # Initialisation
-        
-        blackboard['random_waypoint'] = self.random_waypoint        
-        self.random_move_time += sampling_time   
-        agent.follow(self.random_waypoint)         
-        return Status.RUNNING
-        
-    def get_random_position(self, x_min, x_max, y_min, y_max):
-        pos = (random.randint(x_min, x_max),
-                random.randint(y_min, y_max))
-        return pos
-
-
+# Return to base node
 class ReturnToBaseNode(SyncAction):
     def __init__(self, name, agent):
         super().__init__(name, self._return_to_base)
@@ -140,39 +116,67 @@ class ReturnToBaseNode(SyncAction):
         # If the task is not completed, return ``FAILURE`` to allow the rest of the BT to continue
         return Status.FAILURE
 
-
-class FlockingNode(SyncAction):
+# Exploration node
+class ExplorationNode(SyncAction):
     def __init__(self, name, agent):
-        super().__init__(name, self._flocking)
+        super().__init__(name, self._random_explore)
+        self.random_move_time = float('inf')
+        self.random_waypoint = (0, 0)
 
-    def _flocking(self, agent, blackboard):
-        pass
-    
-class HybridLocomotionNode(SyncAction):
-    def __init__(self, name, agent):
-        super().__init__(name, self._hybrid_locomotion)
+    def _random_explore(self, agent, blackboard):
+        # Move towards a random position
+        if self.random_move_time > agent_max_random_movement_duration:
+            self.random_waypoint = self.get_random_position(task_locations['x_min'], task_locations['x_max'], task_locations['y_min'], task_locations['y_max'])
+            self.random_move_time = 0 # Initialisation
+        
+        blackboard['random_waypoint'] = self.random_waypoint        
+        self.random_move_time += sampling_time   
+        agent.follow(self.random_waypoint)  
+        # print(blackboard)       
+        return Status.RUNNING
+        
+    def get_random_position(self, x_min, x_max, y_min, y_max):
+        pos = (random.randint(x_min, x_max),
+                random.randint(y_min, y_max))
+        return pos
 
-    def _hybrid_locomotion(self, agent, blackboard):
-        pass
-    
-
+# Stay within screen bounds node
 class StayWithinBoundsNode(SyncAction):
     def __init__(self, name, agent):
         super().__init__(name, self._stay_within_bounds)
-        self.x_min = task_locations['x_min']
-        self.x_max = task_locations['x_max']
-        self.y_min = task_locations['y_min']
-        self.y_max = task_locations['y_max']
+        self.boundary_margin = 100        # Margin to start steering back
+        self.boundary_weight = 150        # Adjustable Weight for steering back force
+        self.screen_width = config['simulation']['screen_width']
+        self.screen_height = config['simulation']['screen_height']
+        self.x_min = task_locations['x_min'] + self.boundary_margin
+        self.x_max = task_locations['x_max'] - self.boundary_margin
+        self.y_min = task_locations['y_min'] + self.boundary_margin
+        self.y_max = task_locations['y_max'] - self.boundary_margin
+        
 
     def _stay_within_bounds(self, agent, blackboard):
+        
         # Check if the agent is within bounds
         pos = agent.position
         if not (self.x_min <= pos.x <= self.x_max and self.y_min <= pos.y <= self.y_max):
             # Move the agent back within bounds
-            new_x = min(max(pos.x, self.x_min), self.x_max)
-            new_y = min(max(pos.y, self.y_min), self.y_max)
-            agent.follow((new_x, new_y))
+            new_x = self.screen_width / 4
+            new_y = self.screen_height / 4
+            agent.follow((new_x, new_y), weight=self.boundary_weight)  # Apply the boundary weight
             return Status.RUNNING
-        
-        return Status.SUCCESS
-        
+        else:
+            return Status.SUCCESS
+    
+# Flocking behaviour node
+class FlockingNode(SyncAction):
+    def __init__(self, name, agent):
+        super().__init__(name, self._flocking)
+
+    #NOTE: Flocking Control Loop is applied per agent as this is an Action Node of the current BT 
+    def _flocking(self, agent, blackboard):
+        if not flocking_condition:
+            return Status.FAILURE
+        else:
+            # Flocking Behavior Implementation
+            agent.flocking(agent, blackboard)
+            return Status.SUCCESS

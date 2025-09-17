@@ -1,9 +1,18 @@
 import pygame
 import math
 import copy
-from modules.behavior_tree import *
+from modules.modified_behavior_tree import *            #NOTE: ADJUSTED TO MODIFIED BT
 from modules.utils import config, generate_positions, parse_behavior_tree
 from modules.task import task_colors
+
+
+
+# Load simulation settings
+font = pygame.font.Font(None, 15)
+sampling_freq = config['simulation']['sampling_freq']
+sampling_time = 1.0 / sampling_freq  # in seconds
+screen_width = config['simulation']['screen_width']
+screen_height = config['simulation']['screen_height']
 
 # Load agent configuration
 agent_max_speed = config['agents']['max_speed']
@@ -14,11 +23,41 @@ agent_track_size = config['simulation']['agent_track_size']
 work_rate = config['agents']['work_rate']
 agent_communication_radius = config['agents']['communication_radius']
 agent_situation_awareness_radius = config.get('agents', {}).get('situation_awareness_radius', 0)
-font = pygame.font.Font(None, 15)
+flocking_condition = config['agents']['flocking']['enabled']
+sep_weight = config['agents']['flocking']['separation_weight'] if flocking_condition else 0
+aln_weight = config['agents']['flocking']['alignment_weight'] if flocking_condition else 0
+chn_weight = config['agents']['flocking']['cohesion_weight'] if flocking_condition else 0
+sep_radius = config['agents']['flocking']['separation_radius'] if flocking_condition else 0
+max_flocking_speed = config['agents']['flocking']['max_flocking_speed'] if flocking_condition else 0
+max_flocking_accel = config['agents']['flocking']['max_flocking_accel'] if flocking_condition else 0
+waypoint_transition_radius = config['agents']['flocking']['waypoint_transition_radius'] if flocking_condition else 0
+
 
 # Load behavior tree
 behavior_tree_xml = config['agents']['behavior_tree_xml']
 xml_root = parse_behavior_tree(f"bt_xml/{behavior_tree_xml}")
+
+
+def generate_agents(tasks_info):
+    agent_quantity = config['agents']['quantity']
+    agent_locations = config['agents']['locations']
+
+    agents_positions = generate_positions(agent_quantity,
+                                      agent_locations['x_min'],
+                                      agent_locations['x_max'],
+                                      agent_locations['y_min'],
+                                      agent_locations['y_max'],
+                                      radius=agent_locations['non_overlap_radius'])
+
+    # Initialize agents
+    agents = [Agent(idx, pos, tasks_info) for idx, pos in enumerate(agents_positions)]
+
+    # Provide the global info and create behavior tree
+    for agent in agents:
+        agent.set_global_info_agents(agents)
+        agent.create_behavior_tree()
+
+    return agents
 
 
 
@@ -35,7 +74,7 @@ class Agent:
         self.memory_location = []                                           # To draw track
         self.rotation = 0                                                   # Initial rotation
         self.color = (0, 0, 255)                                            # Blue color
-        self.blackboard = {}
+        self.blackboard = {}                                                # Blackboard --> { BT Node: Comprises of an Agent's Local info including messages, tasks, etc}.
 
         self.tasks_info = tasks_info                                        # global info
         self.agents_info = None                                             # global info
@@ -44,12 +83,20 @@ class Agent:
         self.agents_nearby = []
         self.message_to_share = {}
         self.messages_received = []
-
         self.assigned_task_id = None                                        # Local decision-making result --> ID
         self.planned_tasks = []                                             # Local decision-making result --> Task objects for visualization
         
         self.distance_moved = 0.0                                           # Recorded Evaluation Metrics
-        self.task_amount_done = 0.0        
+        self.task_amount_done = 0.0      
+
+        # Flocking Variables
+        self.sep_radius = sep_radius
+        self.sep_weight = sep_weight
+        self.aln_weight = aln_weight
+        self.chn_weight = chn_weight
+        self.waypoint_transition_radius = waypoint_transition_radius
+        self.max_flocking_speed = max_flocking_speed
+        self.max_flocking_accel = max_flocking_accel
 
 
 
@@ -97,8 +144,12 @@ class Agent:
 
 
     '''
-    Methods for Agent's Communication
+    Methods for Agent's Communication (Mechanisms to recieve messages from nearby agents)
     '''
+    def reset_messages_received(self):
+        self.messages_received = []
+
+
     def local_message_receive(self):
         self.agents_nearby = self.get_agents_nearby()
         for other_agent in self.agents_nearby:
@@ -109,15 +160,143 @@ class Agent:
         return self.agents_nearby
 
 
-    def reset_messages_received(self):
-        self.messages_received = []
-
-
     def receive_message(self, message):
         self.messages_received.append(message)  
 
 
 
+    '''
+    Methods for Agent's Flocking Behavior
+    '''
+    def flocking(self, agent, blackboard):
+        
+        # Retrieve Agent's current position from the blackboard
+        # locomotion_vel = self.locomotion_rule(blackboard)
+        cohesion_vel = self.cohesion_rule(agent)
+        alignment_vel = self.alignment_rule(agent)
+        separation_vel = self.separation_rule(agent)
+
+        locomotion_vel = pygame.Vector2(0.0, 0.0)
+        # cohesion_vel = pygame.Vector2(0.0, 0.0)
+        # alignment_vel = pygame.Vector2(0.0, 0.0)
+        # separation_vel = pygame.Vector2(0.0, 0.0)
+
+        net_agent_vel = [locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0], 
+                    locomotion_vel[1] + cohesion_vel[1] + alignment_vel[1] + separation_vel[1]]
+        # dt_distance_comp = pygame.Vector2(agent_current_position[0] + net_agent_vel[0] * sampling_time,
+        #                                    agent_current_position[1] + net_agent_vel[1] * sampling_time)
+        
+        self.acceleration = (net_agent_vel - self.velocity) / sampling_time
+        # print(f"Flocking Acceleration: {self.acceleration} m/s^2")
+
+
+    def locomotion_rule(self, blackboard):
+
+    #     # Continue moving towards one of the points
+    #     waypoint = self.get_flocking_waypoint()
+
+    #     self.follow(waypoint, weight=1.0)
+    #     blackboard['flocking_waypoint'] = waypoint
+
+        return (waypoint - self.position).normalize() * self.max_flocking_speed
+    
+
+    def get_flocking_waypoint(self):
+
+    #     # Initializing four corner of the screen as waypoints set randomly
+    #     waypoints = [pygame.Vector2( (screen_width / 5) , (screen_height / 5)),
+    #                 pygame.Vector2( 4 * (screen_height / 5), (screen_width / 5) ),
+    #                 pygame.Vector2( (screen_width / 5) , 4 * (screen_height / 5)),
+    #                 pygame.Vector2( 4 * (screen_height / 5) , 4 * (screen_height / 5))]
+        
+    #     # Get a random waypoint
+    #     idx = random.randint(0, len(waypoints)-1)
+        return waypoints[idx]
+    
+
+    def cohesion_rule(self, agent):
+        
+        # Initialzing variables relative to Cohesion Rule
+        sum_x, sum_y = 0.0, 0.0
+        center_x, center_y = 0.0, 0.0
+        agents_flocking_info = self.get_all_agents()    
+        count = len(agents_flocking_info)  
+        
+        #Compute Center of Mass (CoM) w.r.t all the other agents
+        for other_agent in agents_flocking_info:
+            if other_agent != agent.agent_id:
+                sum_x += other_agent.position.x
+                sum_y += other_agent.position.y
+        
+        center_x = sum_x / count
+        center_y = sum_y / count
+        cohesion_vector = pygame.Vector2(center_x, center_y) - agent.position
+        cohesion_vector = cohesion_vector.normalize()
+        return (cohesion_vector.x * self.chn_weight, cohesion_vector.y * self.chn_weight)
+    
+
+    def alignment_rule(self, agent):
+
+        # Initialzing variables relative to Cohesion Rule
+        sum_vx, sum_vy = 0.0, 0.0
+        avg_vx, avg_vy = 0.0, 0.0
+        agents_flocking_info = self.get_all_agents()    
+        count = len(agents_flocking_info)
+
+        #Compute Center of Mass (CoM) w.r.t all the other agents
+        for other_agent in agents_flocking_info:
+            if other_agent != agent.agent_id:
+                sum_vx = other_agent.velocity.x
+                sum_vy = other_agent.velocity.y
+                avg_vx = sum_vx / count
+                avg_vy = sum_vy / count
+
+        #Computing the Magnitude of the Average Velocity
+        if count > 0:
+            alignment_vector = pygame.Vector2(avg_vx, avg_vy)
+            dist = alignment_vector.length()
+            if dist > 0:
+                alignment_vector = alignment_vector / dist
+            return (alignment_vector.x * self.aln_weight, alignment_vector.y * self.aln_weight)
+        else:
+            return (0.0, 0.0)
+    
+
+    def separation_rule(self, agent):
+        
+        # Initializing variables relative to Separation Rule
+        separation_vector = pygame.Vector2(0, 0)
+        local_agents_info = self.get_agents_nearby()
+        total_nearby_agents = len(local_agents_info)
+        count = 0
+        
+        # Comparing all boids with one another to check the separation criteria
+        for other_agent in local_agents_info:
+            if other_agent.agent_id == agent.agent_id:
+
+                # Compute Vector Components away from the other boid
+                other_pos = other_agent.position
+                diff = agent.position - other_pos
+                dist = diff.length()
+
+                # If criteria has met, compute the heading vector
+                if 0 < dist <= self.sep_radius:
+                    diff /= dist  # Weight by distance
+                    separation_vector += diff
+                    count += 1
+        
+        if count > 0:
+            vx = self.sep_weight * separation_vector.x * (1 + ((count + 1) / total_nearby_agents))
+            vy = self.sep_weight * separation_vector.y * (1 + ((count + 1) / total_nearby_agents))
+        else:
+            vx = self.sep_weight * separation_vector.x
+            vy = self.sep_weight * separation_vector.y
+
+        print(f"Separation Vector: {separation_vector}, Count: {count}, Total Nearby Agents: {total_nearby_agents}")
+        return (vx, vy)
+    
+
+    
     '''
     Methods for Agent's Kinematics
     '''
@@ -130,6 +309,7 @@ class Agent:
 
         # Calculate the distance moved in this update and add to distance_moved
         self.distance_moved += self.velocity.length() * sampling_time
+        
         # Memory of positions to draw track
         self.memory_location.append((self.position.x, self.position.y))
         if len(self.memory_location) > agent_track_size:
@@ -146,7 +326,6 @@ class Agent:
         # Limit angular velocity
         if abs(rotation_diff) > self.max_angular_speed:
             rotation_diff = math.copysign(self.max_angular_speed, rotation_diff)
-
         self.rotation += rotation_diff * sampling_time
 
 
@@ -155,13 +334,8 @@ class Agent:
         self.acceleration = pygame.Vector2(0, 0)
 
 
-    def limit(self, vector, max_value):
-        if vector.length_squared() > max_value**2:
-            vector.scale_to_length(max_value)
-        return vector
-    
-
-    def follow(self, target):
+    # MODIFY: Detect if the agent has a boundary_weight attribute attribute passed from modified_bt module. If so, apply the boundary steering force as well... 
+    def follow(self, target, weight=1.0):
         # Calculate desired velocity
         desired = target - self.position
         d = desired.length()
@@ -171,12 +345,23 @@ class Agent:
             desired.normalize_ip()
             desired *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
         else:
-            desired.normalize_ip()
-            desired *= self.max_speed
+            if weight != 1.0:
+                desired.normalize_ip()
+                desired *= self.max_speed
+                desired *= weight   # Apply the weight for boundary steering force
+            else:
+                desired.normalize_ip()
+                desired *= self.max_speed
 
         steer = desired - self.velocity
         steer = self.limit(steer, self.max_accel)
         self.applyForce(steer)
+
+
+    def limit(self, vector, max_value):
+        if vector.length_squared() > max_value**2:
+            vector.scale_to_length(max_value)
+        return vector
 
 
     def applyForce(self, force):
@@ -300,6 +485,10 @@ class Agent:
         self.agents_info = agents_info
 
 
+    def update_task_amount_done(self, amount):
+        self.task_amount_done += amount
+
+
     def get_agents_nearby(self, radius = None):
         _communication_radius = self.communication_radius if radius is None else radius        
         if _communication_radius > 0:
@@ -312,6 +501,14 @@ class Agent:
         else:
             local_agents_info = self.agents_info
         return local_agents_info
+    
+
+    def get_all_agents(self):
+        agents_flocking_info = [
+            other_agent
+            for other_agent in self.agents_info if other_agent.agent_id !=self.agent_id
+        ]
+        return agents_flocking_info
 
    
     def get_tasks_nearby(self, radius = None, with_completed_task = True):
@@ -340,31 +537,4 @@ class Agent:
                     if not task.completed
                 ]                                                
         
-        return local_tasks_info  
-
-
-    def update_task_amount_done(self, amount):
-        self.task_amount_done += amount
-
-
-
-def generate_agents(tasks_info):
-    agent_quantity = config['agents']['quantity']
-    agent_locations = config['agents']['locations']
-
-    agents_positions = generate_positions(agent_quantity,
-                                      agent_locations['x_min'],
-                                      agent_locations['x_max'],
-                                      agent_locations['y_min'],
-                                      agent_locations['y_max'],
-                                      radius=agent_locations['non_overlap_radius'])
-
-    # Initialize agents
-    agents = [Agent(idx, pos, tasks_info) for idx, pos in enumerate(agents_positions)]
-
-    # Provide the global info and create behavior tree
-    for agent in agents:
-        agent.set_global_info_agents(agents)
-        agent.create_behavior_tree()
-
-    return agents
+        return local_tasks_info 
