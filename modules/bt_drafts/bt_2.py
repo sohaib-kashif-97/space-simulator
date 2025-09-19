@@ -39,7 +39,7 @@ class BehaviorTreeList:
         # 'TaskExecutingNode',  
         'FlockingNode',
         'StayWithinBoundsNode',
-        'ExplorationNode', 
+        # 'ExplorationNode', 
         'NearBoundaryCondition',
     ]
 
@@ -115,7 +115,7 @@ class ReturnToBaseNode(SyncAction):
         # Move to the base if the task is completed
         if self.return_to_base_mode:            
             distance_to_base = (self.depot_pos - agent.position).length()
-            if distance_to_base > (target_arrive_threshold): 
+            if distance_to_base > (target_arrive_threshold * 10): 
                 agent.follow(self.depot_pos)
                 return Status.SUCCESS
             
@@ -145,7 +145,7 @@ class ExplorationNode(SyncAction):
                 random.randint(y_min, y_max))
         return pos
 
-# Flocking node
+# Flocking behaviour node
 class FlockingNode(SyncAction):
 
     def __init__(self, name, agent):
@@ -173,19 +173,19 @@ class FlockingNode(SyncAction):
         
         # If far, perform flocking (which should use current_waypoint in locomotion_rule)
         agent.flocking(agent, blackboard)  
-        return Status.RUNNING  # Continue flocking over ticks
+        return Status.RUNNING  # Continue flocking over ticks 
+       
         
 
 '''
---- SIMULATOR EXPLICIT SUCCESS CONDITIONS (CONDITION NODE + ACTION NODE PAIRED UNDER A FALLBACK NODE)---
+--- SIMULATOR CONTROL NODES (WITH ACTION NODE PAIRS)---
 '''
 
-# Near boundary condtion node
+# Near Boundary Condtion Node
 class NearBoundaryCondition(Condition):
     
     def __init__(self, name, agent):
         self.boundary_margin = 100
-        self.boundary_weight = 150  # Not used in condition, but consistent with StayWithinBoundsNode
         self.screen_width = config['simulation']['screen_width']
         self.screen_height = config['simulation']['screen_height']
         self.x_min = task_locations['x_min'] + self.boundary_margin
@@ -202,7 +202,8 @@ class NearBoundaryCondition(Condition):
 class StayWithinBoundsNode(SyncAction):
     def __init__(self, name, agent):
         self.boundary_margin = 100        # Margin to start steering back
-        self.boundary_weight = 150        # Adjustable Weight for steering back force
+        self.boundary_weight = 250        # Adjustable Weight for steering back force
+        self.waypoint_transition_radius = 200
         self.boundary_avoidance_mode = False
         self.screen_width = config['simulation']['screen_width']
         self.screen_height = config['simulation']['screen_height']
@@ -216,14 +217,17 @@ class StayWithinBoundsNode(SyncAction):
 
     def _stay_within_bounds(self, agent, blackboard):
         
-        # Move the agent back within bounds until it reaches the threshold
-        new_x = self.screen_width / 2
-        new_y = self.screen_height / 2
-        center_pos = (new_x, new_y)
-        distance_to_center = (center_pos - agent.position).length()
-        if distance_to_center > target_arrive_threshold: 
-            agent.follow((new_x, new_y), weight=self.boundary_weight)  # Apply the boundary weight
-            return Status.RUNNING
+        if not (self.x_min <= agent.position.x <= self.x_max and self.y_min <= agent.position.y <= self.y_max):
+        
+            new_x = self.screen_width / 2
+            new_y = self.screen_height / 2
+            center_pos = (new_x, new_y)
+            distance_to_center = (center_pos - agent.position).length()
+            
+            # Move the agent back within bounds until it reaches the threshold
+            if distance_to_center > self.waypoint_transition_radius: 
+                agent.follow((new_x, new_y), weight=self.boundary_weight)  # Apply the boundary weight
+                return Status.RUNNING
         
         # If the task is not completed, return ``FAILURE`` to allow the rest of the BT to continue
         return Status.FAILURE

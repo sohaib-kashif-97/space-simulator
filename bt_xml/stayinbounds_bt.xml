@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root BTCPP_format="4">
-  <BehaviorTree ID="flocking-bt">
+  <BehaviorTree ID="stayinbounds-bt">
     <Sequence>
+      <ExplorationNode/>
       <Fallback>
         <NearBoundaryCondition/>
         <StayWithinBoundsNode/>
       </Fallback>
-      <FlockingNode/>
     </Sequence>
   </BehaviorTree>
 </root>
-
-
-    

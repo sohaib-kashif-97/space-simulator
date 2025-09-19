@@ -23,7 +23,7 @@ agent_track_size = config['simulation']['agent_track_size']
 work_rate = config['agents']['work_rate']
 agent_communication_radius = config['agents']['communication_radius']
 agent_situation_awareness_radius = config.get('agents', {}).get('situation_awareness_radius', 0)
-flocking_condition = config['agents']['flocking']['enabled']
+flocking_condition = config.get('agents', {}).get('flocking', {}).get('enabled', False)
 sep_weight = config['agents']['flocking']['separation_weight'] if flocking_condition else 0
 aln_weight = config['agents']['flocking']['alignment_weight'] if flocking_condition else 0
 chn_weight = config['agents']['flocking']['cohesion_weight'] if flocking_condition else 0
@@ -31,7 +31,6 @@ sep_radius = config['agents']['flocking']['separation_radius'] if flocking_condi
 max_flocking_speed = config['agents']['flocking']['max_flocking_speed'] if flocking_condition else 0
 max_flocking_accel = config['agents']['flocking']['max_flocking_accel'] if flocking_condition else 0
 waypoint_transition_radius = config['agents']['flocking']['waypoint_transition_radius'] if flocking_condition else 0
-
 
 # Load behavior tree
 behavior_tree_xml = config['agents']['behavior_tree_xml']
@@ -90,6 +89,7 @@ class Agent:
         self.task_amount_done = 0.0      
 
         # Flocking Variables
+        self.current_flocking_waypoint = None
         self.sep_radius = sep_radius
         self.sep_weight = sep_weight
         self.aln_weight = aln_weight
@@ -171,50 +171,55 @@ class Agent:
     def flocking(self, agent, blackboard):
         
         # Retrieve Agent's current position from the blackboard
-        # locomotion_vel = self.locomotion_rule(blackboard)
-        cohesion_vel = self.cohesion_rule(agent)
-        alignment_vel = self.alignment_rule(agent)
-        separation_vel = self.separation_rule(agent)
+        locomotion_vel = self.locomotion_rule()
+        cohesion_vel = self.cohesion_rule()
+        alignment_vel = self.alignment_rule()
+        separation_vel = self.separation_rule()
 
-        locomotion_vel = pygame.Vector2(0.0, 0.0)
+        # locomotion_vel = pygame.Vector2(0.0, 0.0)
         # cohesion_vel = pygame.Vector2(0.0, 0.0)
         # alignment_vel = pygame.Vector2(0.0, 0.0)
         # separation_vel = pygame.Vector2(0.0, 0.0)
 
-        net_agent_vel = [locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0], 
-                    locomotion_vel[1] + cohesion_vel[1] + alignment_vel[1] + separation_vel[1]]
-        # dt_distance_comp = pygame.Vector2(agent_current_position[0] + net_agent_vel[0] * sampling_time,
-        #                                    agent_current_position[1] + net_agent_vel[1] * sampling_time)
+        net_agent_vel = pygame.Vector2(
+            locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0],
+            locomotion_vel[1] + cohesion_vel[1] + alignment_vel[1] + separation_vel[1]
+        )
+        if net_agent_vel.length() > 0:
+            net_agent_vel.normalize_ip()
+            net_agent_vel *= self.max_flocking_speed  
         
         self.acceleration = (net_agent_vel - self.velocity) / sampling_time
-        # print(f"Flocking Acceleration: {self.acceleration} m/s^2")
-
-
-    def locomotion_rule(self, blackboard):
-
-    #     # Continue moving towards one of the points
-    #     waypoint = self.get_flocking_waypoint()
-
-    #     self.follow(waypoint, weight=1.0)
-    #     blackboard['flocking_waypoint'] = waypoint
-
-        return (waypoint - self.position).normalize() * self.max_flocking_speed
-    
-
-    def get_flocking_waypoint(self):
-
-    #     # Initializing four corner of the screen as waypoints set randomly
-    #     waypoints = [pygame.Vector2( (screen_width / 5) , (screen_height / 5)),
-    #                 pygame.Vector2( 4 * (screen_height / 5), (screen_width / 5) ),
-    #                 pygame.Vector2( (screen_width / 5) , 4 * (screen_height / 5)),
-    #                 pygame.Vector2( 4 * (screen_height / 5) , 4 * (screen_height / 5))]
+        self.acceleration = self.limit(self.acceleration, self.max_flocking_accel)
         
-    #     # Get a random waypoint
-    #     idx = random.randint(0, len(waypoints)-1)
-        return waypoints[idx]
+
+    def locomotion_rule(self):
+        
+        # # Initializing four corner of the screen as waypoints set randomly
+        # waypoints = [pygame.Vector2( (screen_width / 5) , (screen_height / 5)),
+        #             pygame.Vector2( 4 * (screen_height / 5), (screen_width / 5) ),
+        #             pygame.Vector2( (screen_width / 5) , 4 * (screen_height / 5)),
+        #             pygame.Vector2( 4 * (screen_height / 5) , 4 * (screen_height / 5))]
+        
+        # Persist waypoint; change only when close or none set
+        # if self.current_flocking_waypoint is None or (self.position - self.current_flocking_waypoint).length() < self.waypoint_transition_radius:
+        #     ridx = random.randint(0, len(waypoints) - 1)
+        #     self.current_flocking_waypoint = waypoints[ridx]
+
+        if self.current_flocking_waypoint is None:
+            self.current_flocking_waypoint = pygame.Vector2( (screen_width / 5) , (screen_height / 5))
+        else:
+            self.current_flocking_waypoint = self.current_flocking_waypoint
+
+        locomotion_vector = self.current_flocking_waypoint - self.position
+        if locomotion_vector.length() > 0:
+            locomotion_vector.normalize_ip()
+            locomotion_vector *= self.max_flocking_speed
+
+        return (locomotion_vector.x, locomotion_vector.y)
     
 
-    def cohesion_rule(self, agent):
+    def cohesion_rule(self):
         
         # Initialzing variables relative to Cohesion Rule
         sum_x, sum_y = 0.0, 0.0
@@ -222,20 +227,28 @@ class Agent:
         agents_flocking_info = self.get_all_agents()    
         count = len(agents_flocking_info)  
         
+        # If there are no agents in the simulation, skip onwards...
+        if count == 0:
+            return pygame.Vector2(0.0, 0.0)
+        
         #Compute Center of Mass (CoM) w.r.t all the other agents
         for other_agent in agents_flocking_info:
-            if other_agent != agent.agent_id:
+            if other_agent.agent_id != self.agent_id:
                 sum_x += other_agent.position.x
                 sum_y += other_agent.position.y
-        
         center_x = sum_x / count
         center_y = sum_y / count
-        cohesion_vector = pygame.Vector2(center_x, center_y) - agent.position
-        cohesion_vector = cohesion_vector.normalize()
-        return (cohesion_vector.x * self.chn_weight, cohesion_vector.y * self.chn_weight)
+        
+        # Derive Unit Vector to move agents to their CoM
+        cohesion_vector = pygame.Vector2(center_x, center_y) - self.position
+        if cohesion_vector.length() > 0:
+            cohesion_vector.normalize_ip()
+
+        cohesion_vector = cohesion_vector * self.chn_weight
+        return (cohesion_vector.x, cohesion_vector.y)
     
 
-    def alignment_rule(self, agent):
+    def alignment_rule(self):
 
         # Initialzing variables relative to Cohesion Rule
         sum_vx, sum_vy = 0.0, 0.0
@@ -243,47 +256,49 @@ class Agent:
         agents_flocking_info = self.get_all_agents()    
         count = len(agents_flocking_info)
 
+        # If there are no agents in the simulation, skip onwards...
+        if count == 0:
+            return pygame.Vector2(0.0, 0.0)
+        
         #Compute Center of Mass (CoM) w.r.t all the other agents
         for other_agent in agents_flocking_info:
-            if other_agent != agent.agent_id:
-                sum_vx = other_agent.velocity.x
-                sum_vy = other_agent.velocity.y
-                avg_vx = sum_vx / count
-                avg_vy = sum_vy / count
+            sum_vx += other_agent.velocity.x
+            sum_vy += other_agent.velocity.y
+        avg_vx = sum_vx / count
+        avg_vy = sum_vy / count
+
+        alignment_vector = pygame.Vector2(avg_vx, avg_vy)
+        dist = alignment_vector.length()
 
         #Computing the Magnitude of the Average Velocity
-        if count > 0:
-            alignment_vector = pygame.Vector2(avg_vx, avg_vy)
-            dist = alignment_vector.length()
-            if dist > 0:
-                alignment_vector = alignment_vector / dist
-            return (alignment_vector.x * self.aln_weight, alignment_vector.y * self.aln_weight)
-        else:
-            return (0.0, 0.0)
+        if dist > 0:
+            alignment_vector = alignment_vector / dist
+
+        alignment_vector = alignment_vector * self.aln_weight
+        return (alignment_vector.x, alignment_vector.y)
     
 
-    def separation_rule(self, agent):
+    def separation_rule(self):
         
         # Initializing variables relative to Separation Rule
         separation_vector = pygame.Vector2(0, 0)
-        local_agents_info = self.get_agents_nearby()
+        local_agents_info = self.get_agents_nearby(self.sep_radius)
         total_nearby_agents = len(local_agents_info)
         count = 0
         
         # Comparing all boids with one another to check the separation criteria
         for other_agent in local_agents_info:
-            if other_agent.agent_id == agent.agent_id:
+            
+            # Compute Vector Components away from the other boid
+            other_pos = other_agent.position
+            diff = self.position - other_pos
+            dist = diff.length()
 
-                # Compute Vector Components away from the other boid
-                other_pos = other_agent.position
-                diff = agent.position - other_pos
-                dist = diff.length()
-
-                # If criteria has met, compute the heading vector
-                if 0 < dist <= self.sep_radius:
-                    diff /= dist  # Weight by distance
-                    separation_vector += diff
-                    count += 1
+            # If criteria has met, compute the heading vector
+            if 0 < dist <= self.sep_radius:
+                diff /= dist  # Weight by distance
+                separation_vector += diff
+                count += 1
         
         if count > 0:
             vx = self.sep_weight * separation_vector.x * (1 + ((count + 1) / total_nearby_agents))
@@ -292,7 +307,6 @@ class Agent:
             vx = self.sep_weight * separation_vector.x
             vy = self.sep_weight * separation_vector.y
 
-        print(f"Separation Vector: {separation_vector}, Count: {count}, Total Nearby Agents: {total_nearby_agents}")
         return (vx, vy)
     
 
@@ -336,24 +350,24 @@ class Agent:
 
     # MODIFY: Detect if the agent has a boundary_weight attribute attribute passed from modified_bt module. If so, apply the boundary steering force as well... 
     def follow(self, target, weight=1.0):
-        # Calculate desired velocity
-        desired = target - self.position
-        d = desired.length()
+        # Calculate locomotion_vector velocity
+        locomotion_vector = target - self.position
+        d = locomotion_vector.length()
 
         if d < agent_approaching_to_target_radius:
             # Apply arrival behavior
-            desired.normalize_ip()
-            desired *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
+            locomotion_vector.normalize_ip()
+            locomotion_vector *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
         else:
             if weight != 1.0:
-                desired.normalize_ip()
-                desired *= self.max_speed
-                desired *= weight   # Apply the weight for boundary steering force
+                locomotion_vector.normalize_ip()
+                locomotion_vector *= self.max_speed
+                locomotion_vector *= weight   # Apply the weight for boundary steering force
             else:
-                desired.normalize_ip()
-                desired *= self.max_speed
+                locomotion_vector.normalize_ip()
+                locomotion_vector *= self.max_speed
 
-        steer = desired - self.velocity
+        steer = locomotion_vector - self.velocity
         steer = self.limit(steer, self.max_accel)
         self.applyForce(steer)
 
@@ -434,8 +448,8 @@ class Agent:
         start_pos = self.position
 
         # Define line thickness
-        line_thickness = 3  # Set the desired thickness for the lines        
-        # line_thickness = 16-4*self.agent_id  # Set the desired thickness for the lines        
+        line_thickness = 3  # Set the locomotion_vector thickness for the lines        
+        # line_thickness = 16-4*self.agent_id  # Set the locomotion_vector thickness for the lines        
 
         # For Debug
         color_list = [

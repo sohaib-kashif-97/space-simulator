@@ -9,7 +9,7 @@ decision_making:
 
 
 agents:
-  behavior_tree_xml: flocking_bt.xml 
+  behavior_tree_xml: stayinbounds_bt.xml  #flocking_bt.xml
   quantity: 5
   locations:
     x_min: 0
@@ -19,7 +19,7 @@ agents:
     non_overlap_radius: 15 
   max_speed: 0.25  
   max_accel: 0.05
-  max_angular_speed: 0.25
+  max_angular_speed: 0.25             # DEFAULT: 0.25 -- About 15 Degrees
   target_approaching_radius: 50
   work_rate: 1                        # work rate for each agent (per 1.0/simulation.sampling_freq)
   communication_radius: 0             # 0 represents "global", meaning that each agent can access to the information of all the other agents
@@ -33,7 +33,9 @@ agents:
     cohesion_weight: 5.5
     max_flocking_speed: 0.15
     max_flocking_accel: 0.03
-    waypoint_transition_radius: 20
+    waypoint_transition_radius: 100
+    #flocking_duration: 4000.0       #Allow the agents for flocking for a while smoothly before they change direction.
+    
 
 
 tasks:

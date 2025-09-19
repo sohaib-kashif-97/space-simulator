@@ -12,12 +12,9 @@ target_arrive_threshold = config['tasks']['threshold_done_by_arrival']
 task_locations = config['tasks']['locations']
 sampling_freq = config['simulation']['sampling_freq']
 sampling_time = 1.0 / sampling_freq  # in seconds
-screen_width = config['simulation']['screen_width']
-screen_height = config['simulation']['screen_height']
 
 agent_max_random_movement_duration = config.get('agents', {}).get('random_exploration_duration', None)
-flocking_enabled = config.get('agents', {}).get('flocking', {}).get('enabled', False)
-waypoint_transition_radius = config.get('agents', {}).get('flocking', {}).get('waypoint_transition_radius', 5)
+flocking_condition = config.get('agents', {}).get('flocking', {}).get('enabled', False)
 decision_making_module_path = config['decision_making']['plugin']
 module_path, class_name = decision_making_module_path.rsplit('.', 1)
 decision_making_module = importlib.import_module(module_path)
@@ -33,13 +30,13 @@ class BehaviorTreeList:
     ]
 
     ACTION_NODES = [
-        # 'ReturnToBaseNode',
+        'ReturnToBaseNode',
         # 'LocalSensingNode',
         # 'DecisionMakingNode',
         # 'TaskExecutingNode',  
         'FlockingNode',
         'StayWithinBoundsNode',
-        'ExplorationNode', 
+        # 'ExplorationNode', 
         'NearBoundaryCondition',
     ]
 
@@ -145,42 +142,27 @@ class ExplorationNode(SyncAction):
                 random.randint(y_min, y_max))
         return pos
 
-# Flocking node
+# Flocking behaviour node
 class FlockingNode(SyncAction):
 
     def __init__(self, name, agent):
-        self.current_waypoint = pygame.Vector2(screen_width / 2, screen_height / 2)  # Initial center
         super().__init__(name, self._flocking)
 
+    #NOTE: Flocking Control Loop is applied per agent as this is an Action Node of the current BT 
     def _flocking(self, agent, blackboard):
-        if not flocking_enabled:  
+        if not flocking_condition:
             return Status.FAILURE
-        
-        distance_to_waypoint = (self.current_waypoint - agent.position).length()
-        transition_threshold = waypoint_transition_radius  # Use config var (e.g., target_arrive_threshold * 10)
-
-        # If near waypoint, change to new random corner waypoint and disable (return FAILURE)
-        if distance_to_waypoint < transition_threshold:
-            waypoints = [
-                pygame.Vector2(screen_width / 5, screen_height / 5),
-                pygame.Vector2(4 * (screen_width / 5), screen_height / 5),
-                pygame.Vector2(screen_width / 5, 4 * (screen_height / 5)),
-                pygame.Vector2(4 * (screen_width / 5), 4 * (screen_height / 5))
-            ]
-            self.current_waypoint = random.choice(waypoints)
-            agent.follow(self.current_waypoint)  # Optional: Start moving to new one
-            return Status.FAILURE  # Disable flocking, let BT fallback
-        
-        # If far, perform flocking (which should use current_waypoint in locomotion_rule)
-        agent.flocking(agent, blackboard)  
-        return Status.RUNNING  # Continue flocking over ticks
+        else:
+            # Flocking Behavior Implementation
+            agent.flocking(agent, blackboard)
+            return Status.SUCCESS
         
 
 '''
---- SIMULATOR EXPLICIT SUCCESS CONDITIONS (CONDITION NODE + ACTION NODE PAIRED UNDER A FALLBACK NODE)---
+--- SIMULATOR CONTROL NODES (WITH ACTION NODE PAIRS)---
 '''
 
-# Near boundary condtion node
+# Near Boundary Condtion Node
 class NearBoundaryCondition(Condition):
     
     def __init__(self, name, agent):
