@@ -185,14 +185,12 @@ class FlockingNode(SyncAction):
 class NearBoundaryCondition(Condition):
     
     def __init__(self, name, agent):
-        self.boundary_margin = 100
-        self.screen_width = config['simulation']['screen_width']
-        self.screen_height = config['simulation']['screen_height']
+        self.boundary_margin = boundary_margin
         self.x_min = task_locations['x_min'] + self.boundary_margin
         self.x_max = task_locations['x_max'] - self.boundary_margin
         self.y_min = task_locations['y_min'] + self.boundary_margin
         self.y_max = task_locations['y_max'] - self.boundary_margin
-        condition_func = lambda agent, blackboard: not (
+        condition_func = lambda agent, blackboard: (
             self.x_min <= agent.position.x <= self.x_max and 
             self.y_min <= agent.position.y <= self.y_max
         )
@@ -201,9 +199,9 @@ class NearBoundaryCondition(Condition):
 # Stay within screen bounds node
 class StayWithinBoundsNode(SyncAction):
     def __init__(self, name, agent):
-        self.boundary_margin = 100        # Margin to start steering back
-        self.boundary_weight = 250        # Adjustable Weight for steering back force
-        self.waypoint_transition_radius = 200
+        self.boundary_margin = boundary_margin        # Margin to start steering back
+        self.boundary_weight = boundary_weight        # Adjustable Weight for steering back force
+        self.waypoint_transition_radius = waypoint_transition_radius
         self.boundary_avoidance_mode = False
         self.screen_width = config['simulation']['screen_width']
         self.screen_height = config['simulation']['screen_height']
@@ -214,20 +212,24 @@ class StayWithinBoundsNode(SyncAction):
         super().__init__(name, self._stay_within_bounds)
         
         
-
     def _stay_within_bounds(self, agent, blackboard):
         
-        if not (self.x_min <= agent.position.x <= self.x_max and self.y_min <= agent.position.y <= self.y_max):
-        
-            new_x = self.screen_width / 2
-            new_y = self.screen_height / 2
-            center_pos = (new_x, new_y)
-            distance_to_center = (center_pos - agent.position).length()
-            
-            # Move the agent back within bounds until it reaches the threshold
-            if distance_to_center > self.waypoint_transition_radius: 
-                agent.follow((new_x, new_y), weight=self.boundary_weight)  # Apply the boundary weight
-                return Status.RUNNING
+        # Ensure the flock stays within screen bounds
+        if self.boundary_margin_check(agent):     
+            x = screen_height / 2
+            y = screen_width / 2
+            center_pos = pygame.Vector2(x, y)
+            if(agent.position - center_pos).length() > self.waypoint_transition_radius:
+                agent.follow(center_pos, weight= self.boundary_weight)  # Strongly follow CoM to stay within bounds
+            return Status.RUNNING
         
         # If the task is not completed, return ``FAILURE`` to allow the rest of the BT to continue
         return Status.FAILURE
+    
+
+    def boundary_margin_check(self, agent):
+        margin = boundary_margin  # Define a margin to consider "near" the edge
+        if (agent.position.x < margin or agent.position.x > screen_width - margin or
+            agent.position.y < margin or agent.position.y > screen_height - margin):
+            return True
+        return False

@@ -20,6 +20,8 @@ flocking_enabled = config.get('agents', {}).get('flocking', {}).get('enabled', F
 flocking_waypoint_duration = config['agents']['flocking']['flocking_waypoint_duration']
 waypoint_transition_radius = config.get('agents', {}).get('flocking', {}).get('waypoint_transition_radius', 5)
 decision_making_module_path = config['decision_making']['plugin']
+boundary_margin = config.get('agents', {}).get('boundary_margin', 100)
+boundary_weight = config.get('agents', {}).get('boundary_weight', 200)
 module_path, class_name = decision_making_module_path.rsplit('.', 1)
 decision_making_module = importlib.import_module(module_path)
 decision_making_class = getattr(decision_making_module, class_name)
@@ -28,6 +30,7 @@ decision_making_class = getattr(decision_making_module, class_name)
 
 # BT Node List
 class BehaviorTreeList:
+    
     CONTROL_NODES = [        
         'Sequence',
         'Fallback'
@@ -37,11 +40,12 @@ class BehaviorTreeList:
         # 'ReturnToBaseNode',
         # 'LocalSensingNode',
         # 'DecisionMakingNode',
-        # 'TaskExecutingNode',  
+        # 'TaskExecutingNode', 
+        # 'ExplorationNode',  
         'FlockingNode',
         'StayWithinBoundsNode',
-        'ExplorationNode', 
         'NearBoundaryCondition',
+        'HybridLocomotionNode'
     ]
 
 
@@ -150,11 +154,9 @@ class ExplorationNode(SyncAction):
 class FlockingNode(SyncAction):
 
     def __init__(self, name, agent):
-        self.current_waypoint = pygame.Vector2(0, 0) 
+        self.current_waypoint = None
         self.flocking_move_time = float(0.0)  # Timer to track duration at current waypoint
-        all_agents = agent.get_all_agents()
-        if agent.agent_id == 0:
-            self.set_common_waypoint(agent, agent.blackboard)
+        self.leader_id = 0  # Assume agent 0 is leader.
         super().__init__(name, self._flocking)
 
 
@@ -165,124 +167,118 @@ class FlockingNode(SyncAction):
             return Status.FAILURE
         
         # Computing Center of Mass (CoM) of all agents
-        flock_agents = agent.get_all_agents()
-        count = len(flock_agents)
-        blackboard['CoM'] = self.get_com(flock_agents, count)
+        blackboard['CoM'] = self.get_com(agent)
 
-        # If flocking timer times out, change to new random waypoint for the entire flock
-        if self.flocking_move_time > flocking_waypoint_duration:
-            if agent.agent_id == 0:
-                self.set_common_waypoint(agent, blackboard)
-            self.flocking_move_time = 0.0           # Reset timer
-            return Status.FAILURE                   # Disable flocking, let BT fallback
-        # Ensure the flock stays within screen bounds
-        elif self.boundary_margin_check(agent):
-            x = screen_height / 2
-            y = screen_width / 2
-            center_pos = pygame.Vector2(x, y)
-            if(agent.position - center_pos).length() > waypoint_transition_radius:
-                agent.follow(center_pos, weight=200)  # Strongly follow CoM to stay within bounds
-                print(f"Boundary detected, Agent {agent.agent_id} moving towards center")
-            return Status.RUNNING
-        # If niether, perform flocking behavior and keep timer running
-        else:
-            self.flocking_move_time += sampling_time 
-            agent.flocking(blackboard) 
-
-            # if self.flocking_move_time % 500.0 == 0.0:
-                # print(f"[{self.flocking_move_time}] --- Agent {agent.agent_id} Still Flocking") 
-
-            return Status.RUNNING  # Continue flocking over ticks
-
-
-    def set_common_waypoint(self, agent, blackboard):
-
-        # Creating a list of waypoints
-        waypoints = [
-            pygame.Vector2(x, y) 
-            for x in range(600,800,50)
-            for y in range(400,600,50)
-        ]
-
-        self.common_waypoint = random.choice(waypoints)
-        agents = agent.get_all_agents()
         
-        if len(agents) != 0:
-            for agent in agents:
-                agent.blackboard['current_waypoint'] = self.common_waypoint
-                # print(f"Flocking waypoint changed for Agent {agent.agent_id} to:", self.current_waypoint)
-            
+        # Handle shared waypoint (leader sets, others follow).
+        if agent.agent_id == self.leader_id:
+            if 'common_waypoint' not in blackboard:
+                blackboard['common_waypoint'] = self.set_common_waypoint()
+            current_shared_waypoint = blackboard['common_waypoint']
+        else:
+            leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
+            if leader and 'common_waypoint' in leader.blackboard:
+                current_shared_waypoint = leader.blackboard['common_waypoint']
+            else:
+                current_shared_waypoint = None
+        
+        # Detect waypoint change and reset timer for sync.
+        if self.current_waypoint != current_shared_waypoint:
+            self.current_waypoint = current_shared_waypoint
+            self.flocking_move_time = 0.0
+        
+        # Leader updates the shared waypoint.
+        if self.flocking_move_time > flocking_waypoint_duration:
+            if agent.agent_id == self.leader_id:
+                blackboard['common_waypoint'] = self.set_common_waypoint()
+            self.flocking_move_time = 0.0             
+               
+        # If niether, perform flocking behavior and keep timer running
+        self.flocking_move_time += sampling_time 
+        agent.flocking(blackboard, self.current_waypoint) 
+        return Status.RUNNING  # Continue flocking over ticks
+
+    
+    def set_common_waypoint(self):
+        x = random.randint( 0, int(0.25 * screen_width))
+        y = random.randint( 0, int(0.75 * screen_height))
+        return pygame.Vector2(x, y)
 
 
-    def boundary_margin_check(self, agent):
-        margin = 50  # Define a margin to consider "near" the edge
-        if (agent.position.x < margin or agent.position.x > screen_width - margin or
-            agent.position.y < margin or agent.position.y > screen_height - margin):
-            return True
-        return False
-
-
-    def get_com(self, agents_flocking_info, count):
+    def get_com(self, agents):
+        flock_agents = agents.get_all_agents()
+        count = len(flock_agents)
         if count == 0:
             return pygame.Vector2(0.0, 0.0)
-        
         sum_x, sum_y = 0.0, 0.0
-        for other_agent in agents_flocking_info:
+        for other_agent in flock_agents:
             sum_x += other_agent.position.x
             sum_y += other_agent.position.y
         avg_x = sum_x / count
         avg_y = sum_y / count
-        return pygame.Vector2(avg_x, avg_y)
-        
+        return pygame.Vector2(avg_x, avg_y)  
 
-'''
---- SIMULATOR EXPLICIT SUCCESS CONDITIONS (CONDITION NODE + ACTION NODE PAIRED UNDER A FALLBACK NODE) ---
-'''
-
-# Near boundary condtion node
-class NearBoundaryCondition(Condition):
-    
+# Hybridized Locomotion node
+class HybridLocomotionNode(SyncAction):
     def __init__(self, name, agent):
-        self.boundary_margin = 100
-        self.boundary_weight = 150  # Not used in condition, but consistent with StayWithinBoundsNode
-        self.screen_width = config['simulation']['screen_width']
-        self.screen_height = config['simulation']['screen_height']
-        self.x_min = task_locations['x_min'] + self.boundary_margin
-        self.x_max = task_locations['x_max'] - self.boundary_margin
-        self.y_min = task_locations['y_min'] + self.boundary_margin
-        self.y_max = task_locations['y_max'] - self.boundary_margin
-        condition_func = lambda agent, blackboard: not (
-            self.x_min <= agent.position.x <= self.x_max and 
-            self.y_min <= agent.position.y <= self.y_max
-        )
+        self.leader_id = 0  # Assume agent 0 is leader.
+        super().__init__(name, self._hybrid_locomotion) 
+
+    def _hybrid_locomotion(self, agent, blackboard):
+    
+        #Get current waypoint
+        if agent.agent_id == self.leader_id:
+            waypoint = blackboard.get('common_waypoint')
+        else:
+            leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
+            waypoint = leader.blackboard.get('common_waypoint') if leader else None
+
+        if waypoint is None:
+            return Status.FAILURE  # No waypoint to follow
+        
+        # Calculate distance to waypoint
+        dist_to_goal = (waypoint - agent.position).length()
+
+        #Dynamically switch between Locomotion Mechanisms based on distance
+        if dist_to_goal < self.transition_radius:
+            progress = dist_to_goal / self.transition_radius
+            agent.separation_radius = self.min_sep_radius + (self.max_sep_radius - self.min_sep_radius) * progress  # Assume agent has separation_radius attr.
+            current_speed = self.min_speed + (agent.max_speed - self.min_speed) * progress  # Assume agent.max_speed.
+        else:
+            agent.separation_radius = self.max_sep_radius
+            current_speed = agent.max_speed
+
+        
+        
+    
+'''
+--- SIMULATOR CONTROL NODES (WITH ACTION NODE PAIRS)---
+'''
+
+# Near Boundary Condtion Node
+class NearBoundaryCondition(Condition):
+    def __init__(self, name, agent):
+        def condition_func(agent, blackboard):
+            margin = boundary_margin
+            if (agent.position.x < margin or agent.position.x > screen_width - margin or
+                agent.position.y < margin or agent.position.y > screen_height - margin):
+                return True
+            return False
         super().__init__(name, condition_func)
 
 # Stay within screen bounds node
 class StayWithinBoundsNode(SyncAction):
     def __init__(self, name, agent):
-        self.boundary_margin = 100        # Margin to start steering back
-        self.boundary_weight = 150        # Adjustable Weight for steering back force
-        self.boundary_avoidance_mode = False
-        self.screen_width = config['simulation']['screen_width']
-        self.screen_height = config['simulation']['screen_height']
-        self.x_min = task_locations['x_min'] + self.boundary_margin
-        self.x_max = task_locations['x_max'] - self.boundary_margin
-        self.y_min = task_locations['y_min'] + self.boundary_margin
-        self.y_max = task_locations['y_max'] - self.boundary_margin
         super().__init__(name, self._stay_within_bounds)
-        
-        
 
     def _stay_within_bounds(self, agent, blackboard):
+        center_pos = pygame.Vector2(screen_width / 2, screen_height / 2)
+        distance = (agent.position - center_pos).length()
+        if distance > waypoint_transition_radius:
+            agent.follow(center_pos, weight=boundary_weight)
+        return Status.RUNNING  # Continue running to keep adjusting position.
         
-        # Move the agent back within bounds until it reaches the threshold
-        new_x = self.screen_width / 2
-        new_y = self.screen_height / 2
-        center_pos = (new_x, new_y)
-        distance_to_center = (center_pos - agent.position).length()
-        if distance_to_center > target_arrive_threshold: 
-            agent.follow((new_x, new_y), weight=self.boundary_weight)  # Apply the boundary weight
-            return Status.RUNNING
-        
-        # If the task is not completed, return ``FAILURE`` to allow the rest of the BT to continue
-        return Status.FAILURE
+      
+
+    
+    

@@ -15,6 +15,8 @@ screen_width = config['simulation']['screen_width']
 screen_height = config['simulation']['screen_height']
 
 # Load agent configuration
+ema_alpha_vel = config['agents'].get('ema_alpha_vel', 0.3)
+ema_alpha_rot = config['agents'].get('ema_alpha_rot', 0.1)
 agent_max_speed = config['agents']['max_speed']
 agent_max_accel = config['agents']['max_accel']
 max_angular_speed = config['agents']['max_angular_speed']
@@ -62,21 +64,33 @@ def generate_agents(tasks_info):
 
 class Agent:
     def __init__(self, agent_id, position, tasks_info):
+        
+        # Basic Agent Attributes
         self.agent_id = agent_id
+        self.work_rate = work_rate
+        self.memory_location = []                                           # To draw track
+        self.color = (0, 0, 255)                                            # Blue color
+        self.blackboard = {}                                                # Blackboard --> { BT Node: Comprises of an Agent's Local info including messages, tasks, etc}.
+        
+        # Agent Kinematics and Dynamics Attributes
         self.position = pygame.Vector2(position)
         self.velocity = pygame.Vector2(0, 0)
         self.acceleration = pygame.Vector2(0, 0)
         self.max_speed = agent_max_speed
         self.max_accel = agent_max_accel
         self.max_angular_speed = max_angular_speed
-        self.work_rate = work_rate
-        self.memory_location = []                                           # To draw track
-        self.rotation = 0                                                   # Initial rotation
-        self.color = (0, 0, 255)                                            # Blue color
-        self.blackboard = {}                                                # Blackboard --> { BT Node: Comprises of an Agent's Local info including messages, tasks, etc}.
+        self.rotation = 0                                                   # Initial Rotation
 
-        self.tasks_info = tasks_info                                        # global info
-        self.agents_info = None                                             # global info
+        # Smoothed kinematic variables for low-pass filtering
+        self.ema_alpha_vel = ema_alpha_vel
+        self.ema_alpha_rot = ema_alpha_rot
+        self.smoothed_acceleration = self.acceleration.copy()
+        self.smoothed_velocity = self.velocity.copy()
+        self.smoothed_rotation = self.rotation
+
+        # Task related Attributes for Agents
+        self.tasks_info = tasks_info                                        # Global Information
+        self.agents_info = None                                             # Global Information
         self.communication_radius = agent_communication_radius
         self.situation_awareness_radius = agent_situation_awareness_radius
         self.agents_nearby = []
@@ -85,6 +99,7 @@ class Agent:
         self.assigned_task_id = None                                        # Local decision-making result --> ID
         self.planned_tasks = []                                             # Local decision-making result --> Task objects for visualization
         
+        # Attributes realted to Evaluation Metrics
         self.distance_moved = 0.0                                           # Recorded Evaluation Metrics
         self.task_amount_done = 0.0      
 
@@ -168,18 +183,13 @@ class Agent:
     '''
     Methods for Agent's Flocking Behavior
     '''
-    def flocking(self, blackboard):
+    def flocking(self, blackboard, waypoint):
         
         # Retrieve Agent's current position from the blackboard
-        locomotion_vel = self.locomotion_rule(blackboard)
+        locomotion_vel = self.locomotion_rule(blackboard, waypoint)
         cohesion_vel = self.cohesion_rule(blackboard)
         alignment_vel = self.alignment_rule()
         separation_vel = self.separation_rule()
-
-        # locomotion_vel = pygame.Vector2(0.0, 0.0)
-        # cohesion_vel = pygame.Vector2(0.0, 0.0)
-        # alignment_vel = pygame.Vector2(0.0, 0.0)
-        # separation_vel = pygame.Vector2(0.0, 0.0)
 
         net_agent_vel = pygame.Vector2(
             locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0],
@@ -193,18 +203,18 @@ class Agent:
         self.acceleration = self.limit(self.acceleration, self.max_flocking_accel)
         
 
-    def locomotion_rule(self, blackboard):
+    def locomotion_rule(self, blackboard, waypoint):
 
-        waypoint = blackboard.get('current_waypoint')
+        self.current_flocking_waypoint = waypoint
         if waypoint is None:
             return pygame.Vector2(0.0, 0.0)
 
         #Deriving the Locomotion Vector towards the current waypoint
-        locomotion_vector = waypoint - blackboard['CoM']
+        locomotion_vector = self.current_flocking_waypoint - blackboard['CoM']
         if locomotion_vector.length() > 0:
             locomotion_vector.normalize_ip()
             locomotion_vector *= self.max_flocking_speed
-        return (locomotion_vector.x, locomotion_vector.y)
+        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
     
 
     def cohesion_rule(self, blackboard):
@@ -215,7 +225,7 @@ class Agent:
             cohesion_vector.normalize_ip()
 
         cohesion_vector = cohesion_vector * self.chn_weight
-        return (cohesion_vector.x, cohesion_vector.y)
+        return (round(cohesion_vector.x, 3), round(cohesion_vector.y, 3))
     
 
     def alignment_rule(self):
@@ -223,7 +233,7 @@ class Agent:
         # Initialzing variables relative to Cohesion Rule
         sum_vx, sum_vy = 0.0, 0.0
         avg_vx, avg_vy = 0.0, 0.0
-        agents_flocking_info = self.get_all_agents()    
+        agents_flocking_info = self.get_all_other_agents()    
         count = len(agents_flocking_info)
         
         # If there are no agents in the simulation, skip onwards...
@@ -245,7 +255,7 @@ class Agent:
             alignment_vector = alignment_vector / dist
 
         alignment_vector = alignment_vector * self.aln_weight
-        return (alignment_vector.x, alignment_vector.y)
+        return (round(alignment_vector.x, 3), round(alignment_vector.y, 3))
     
 
     def separation_rule(self):
@@ -278,7 +288,7 @@ class Agent:
             vx = self.sep_weight * separation_vector.x
             vy = self.sep_weight * separation_vector.y
 
-        return (vx, vy)
+        return (round(vx,3), round(vy,3))
     
 
     
@@ -286,11 +296,19 @@ class Agent:
     Methods for Agent's Kinematics
     '''
     def update(self):
-        # Update velocity and position
+        
+        # Smooth Acceleration
+        self.smoothed_acceleration = self.apply_low_pass_filter_vector(self.acceleration, self.smoothed_acceleration)
+        self.smoothed_acceleration = self.acceleration
+        
+        # Smooth Velocity
         self.velocity += self.acceleration * sampling_time
         self.velocity = self.limit(self.velocity, self.max_speed)
+        self.velocity = self.apply_low_pass_filter_vector(self.velocity, self.smoothed_velocity)
+        self.smoothed_velocity = self.velocity
+        
+        # Update Position
         self.position += self.velocity * sampling_time
-        self.acceleration *= 0  # Reset acceleration
 
         # Calculate the distance moved in this update and add to distance_moved
         self.distance_moved += self.velocity.length() * sampling_time
@@ -300,23 +318,49 @@ class Agent:
         if len(self.memory_location) > agent_track_size:
             self.memory_location.pop(0)
 
-        # Update rotation
-        desired_rotation = math.atan2(self.velocity.y, self.velocity.x)
-        rotation_diff = desired_rotation - self.rotation
-        while rotation_diff > math.pi:
-            rotation_diff -= 2 * math.pi
-        while rotation_diff < -math.pi:
-            rotation_diff += 2 * math.pi
+        # Smooth rotation (turning) based on smoothed velocity direction
+        if self.velocity.length_squared() > 0:
+            target_rotation = math.atan2(self.velocity.y, self.velocity.x)
+        else:
+            target_rotation = self.smoothed_rotation  # No change if stopped
+        
+        self.rotation = self.apply_low_pass_filter_angle(target_rotation, self.smoothed_rotation)
+        self.smoothed_rotation = self.rotation
+    
 
-        # Limit angular velocity
-        if abs(rotation_diff) > self.max_angular_speed:
-            rotation_diff = math.copysign(self.max_angular_speed, rotation_diff)
-        self.rotation += rotation_diff * sampling_time
-
+    # def agent_log(self):
+    #     print(f"Agent {self.agent_id} \n" +
+    #           f"Pos: ({self.position.x:.2f}, {self.position.y:.2f}) \n" +
+    #           f"Vel: ({self.velocity.x:.2f}, {self.velocity.y:.2f}) \n" +
+    #           f"Accel: ({self.acceleration.x:.2f}, {self.acceleration.y:.2f})", flush=True)
+        
 
     def reset_movement(self):
         self.velocity = pygame.Vector2(0, 0)
         self.acceleration = pygame.Vector2(0, 0)
+
+
+    # Simple first-order low-pass for Vector2 (linear smoothing)
+    def apply_low_pass_filter_vector(self, current, previous_smoothed):
+        return self.ema_alpha_vel * current + (1 - self.ema_alpha_vel) * previous_smoothed
+
+
+    # Low-pass for angles (handles wrap-around using sin/cos)
+    def apply_low_pass_filter_angle(self, target, previous_smoothed):
+        sin_val = self.ema_alpha_rot * math.sin(target) + (1 - self.ema_alpha_rot) * math.sin(previous_smoothed)
+        cos_val = self.ema_alpha_rot * math.cos(target) + (1 - self.ema_alpha_rot) * math.cos(previous_smoothed)
+        smoothed_angle = math.atan2(sin_val, cos_val)
+
+        # Compute shortest angular difference
+        delta = math.atan2(math.sin(smoothed_angle - previous_smoothed), math.cos(smoothed_angle - previous_smoothed))
+
+        # Clamp delta to max angular speed limit
+        max_delta = self.max_angular_speed * sampling_time
+        clamped_delta = max(min(delta, max_delta), -max_delta)
+
+        # Apply clamped change and normalize to (-pi, pi]
+        new_angle = previous_smoothed + clamped_delta
+        return (new_angle + math.pi) % (2 * math.pi) - math.pi
 
 
     # MODIFY: Detect if the agent has a boundary_weight attribute attribute passed from modified_bt module. If so, apply the boundary steering force as well... 
@@ -488,12 +532,20 @@ class Agent:
         return local_agents_info
     
 
-    def get_all_agents(self):
-        agents_flocking_info = [
+    def get_all_other_agents(self):    # All of the agents that are nearby to the agent in subject in simulation
+        agents_info = [
             other_agent
             for other_agent in self.agents_info if other_agent.agent_id !=self.agent_id
         ]
-        return agents_flocking_info
+        return agents_info
+    
+
+    def get_all_agents(self):           # All of the agents in simulation
+        agents_info = [
+            other_agent
+            for other_agent in self.agents_info 
+        ]
+        return agents_info
 
    
     def get_tasks_nearby(self, radius = None, with_completed_task = True):
