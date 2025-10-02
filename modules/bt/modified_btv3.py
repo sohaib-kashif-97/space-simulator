@@ -17,8 +17,11 @@ screen_height = config['simulation']['screen_height']
 
 agent_max_random_movement_duration = config.get('agents', {}).get('random_exploration_duration', None)
 flocking_enabled = config.get('agents', {}).get('flocking', {}).get('enabled', False)
+min_sep_radius = config['agents']['flocking']['min_sep_radius']
+max_sep_radius = config['agents']['flocking']['max_sep_radius']
 flocking_waypoint_duration = config['agents']['flocking']['flocking_waypoint_duration']
-waypoint_transition_radius = config.get('agents', {}).get('flocking', {}).get('waypoint_transition_radius', 5)
+goal_radius = config['agents']['flocking']['goal_radius']
+waypoint_transition_radius = config['agents']['flocking']['waypoint_transition_radius']
 decision_making_module_path = config['decision_making']['plugin']
 boundary_margin = config.get('agents', {}).get('boundary_margin', 100)
 boundary_weight = config.get('agents', {}).get('boundary_weight', 200)
@@ -156,7 +159,7 @@ class FlockingNode(SyncAction):
     def __init__(self, name, agent):
         self.current_waypoint = None
         self.flocking_move_time = float(0.0)  # Timer to track duration at current waypoint
-        self.leader_id = 0  # Assume agent 0 is leader.
+        # self.leader_id = 0  # Assume agent 0 is leader.
         super().__init__(name, self._flocking)
 
 
@@ -169,34 +172,16 @@ class FlockingNode(SyncAction):
         # Computing Center of Mass (CoM) of all agents
         blackboard['CoM'] = self.get_com(agent)
 
-        
         # Handle shared waypoint (leader sets, others follow).
-        if agent.agent_id == self.leader_id:
-            if 'common_waypoint' not in blackboard:
-                blackboard['common_waypoint'] = self.set_common_waypoint()
-            current_shared_waypoint = blackboard['common_waypoint']
+        if 'common_waypoint' not in blackboard:
+            blackboard['common_waypoint'] = self.set_common_waypoint()
+            self.current_waypoint = blackboard['common_waypoint']
+            return Status.FAILURE       
         else:
-            leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
-            if leader and 'common_waypoint' in leader.blackboard:
-                current_shared_waypoint = leader.blackboard['common_waypoint']
-            else:
-                current_shared_waypoint = None
-        
-        # Detect waypoint change and reset timer for sync.
-        if self.current_waypoint != current_shared_waypoint:
-            self.current_waypoint = current_shared_waypoint
-            self.flocking_move_time = 0.0
-        
-        # Leader updates the shared waypoint.
-        if self.flocking_move_time > flocking_waypoint_duration:
-            if agent.agent_id == self.leader_id:
-                blackboard['common_waypoint'] = self.set_common_waypoint()
-            self.flocking_move_time = 0.0             
-               
-        # If niether, perform flocking behavior and keep timer running
-        self.flocking_move_time += sampling_time 
-        agent.flocking(blackboard, self.current_waypoint) 
-        return Status.RUNNING  # Continue flocking over ticks
+            # Perform flocking behavior and keep timer running
+            self.flocking_move_time += sampling_time 
+            agent.flocking(blackboard, self.current_waypoint) 
+            return Status.RUNNING  # Continue flocking over ticks
 
     
     def set_common_waypoint(self):
@@ -218,38 +203,9 @@ class FlockingNode(SyncAction):
         avg_y = sum_y / count
         return pygame.Vector2(avg_x, avg_y)  
 
-# Hybridized Locomotion node
-class HybridLocomotionNode(SyncAction):
-    def __init__(self, name, agent):
-        self.leader_id = 0  # Assume agent 0 is leader.
-        super().__init__(name, self._hybrid_locomotion) 
 
-    def _hybrid_locomotion(self, agent, blackboard):
     
-        #Get current waypoint
-        if agent.agent_id == self.leader_id:
-            waypoint = blackboard.get('common_waypoint')
-        else:
-            leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
-            waypoint = leader.blackboard.get('common_waypoint') if leader else None
 
-        if waypoint is None:
-            return Status.FAILURE  # No waypoint to follow
-        
-        # Calculate distance to waypoint
-        dist_to_goal = (waypoint - agent.position).length()
-
-        #Dynamically switch between Locomotion Mechanisms based on distance
-        if dist_to_goal < self.transition_radius:
-            progress = dist_to_goal / self.transition_radius
-            agent.separation_radius = self.min_sep_radius + (self.max_sep_radius - self.min_sep_radius) * progress  # Assume agent has separation_radius attr.
-            current_speed = self.min_speed + (agent.max_speed - self.min_speed) * progress  # Assume agent.max_speed.
-        else:
-            agent.separation_radius = self.max_sep_radius
-            current_speed = agent.max_speed
-
-        
-        
     
 '''
 --- SIMULATOR CONTROL NODES (WITH ACTION NODE PAIRS)---
@@ -276,7 +232,9 @@ class StayWithinBoundsNode(SyncAction):
         distance = (agent.position - center_pos).length()
         if distance > waypoint_transition_radius:
             agent.follow(center_pos, weight=boundary_weight)
-        return Status.RUNNING  # Continue running to keep adjusting position.
+            return Status.RUNNING  # Continue running to keep adjusting position.
+        else:
+            return Status.SUCCESS  # Successfully within bounds.
         
       
 

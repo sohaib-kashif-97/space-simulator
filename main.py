@@ -172,6 +172,11 @@ async def game_loop():
                 # Draw Background / Clear the screen
                 screen.fill(background_color)
 
+                # Draw Flocking Destination Region if enabled
+                if rendering_options.get('agent_flocking_waypoint'):
+                    for agent in agents:
+                        agent.draw_flocking_waypoint(screen)
+                
                 # Draw Agent Network Topology
                 if rendering_options.get('agent_communication_topology'):
                     for agent in agents:
@@ -269,7 +274,7 @@ def main():
     asyncio.run(game_loop())
 
 
-# Run the game
+# Run the Simulator
 if __name__ == "__main__":    
     if profiling_mode:
         cProfile.run('main()', sort='cumulative')

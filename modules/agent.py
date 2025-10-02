@@ -1,42 +1,46 @@
 import pygame
 import math
 import copy
-from modules.modified_behavior_tree import *            #NOTE: ADJUSTED TO MODIFIED BT
+from modules.bt.modified_btv5 import *            #NOTE: ADJUSTED TO MODIFIED BT
 from modules.utils import config, generate_positions, parse_behavior_tree
 from modules.task import task_colors
 
 
 
-# Load simulation settings
+# Simulation Parameters
 font = pygame.font.Font(None, 15)
 sampling_freq = config['simulation']['sampling_freq']
 sampling_time = 1.0 / sampling_freq  # in seconds
 screen_width = config['simulation']['screen_width']
 screen_height = config['simulation']['screen_height']
+agent_track_size = config['simulation']['agent_track_size']
 
-# Load agent configuration
+# Agent BT xml file
+behavior_tree_xml = config['agents']['behavior_tree_xml']
+xml_root = parse_behavior_tree(f"bt_xml/{behavior_tree_xml}")
+
+# Agent Dynamics Parameters
 ema_alpha_vel = config['agents'].get('ema_alpha_vel', 0.3)
 ema_alpha_rot = config['agents'].get('ema_alpha_rot', 0.1)
 agent_max_speed = config['agents']['max_speed']
 agent_max_accel = config['agents']['max_accel']
 max_angular_speed = config['agents']['max_angular_speed']
 agent_approaching_to_target_radius = config['agents']['target_approaching_radius']
-agent_track_size = config['simulation']['agent_track_size']
 work_rate = config['agents']['work_rate']
 agent_communication_radius = config['agents']['communication_radius']
 agent_situation_awareness_radius = config.get('agents', {}).get('situation_awareness_radius', 0)
+
+# Agent Flocking Parameters
 flocking_condition = config.get('agents', {}).get('flocking', {}).get('enabled', False)
+sep_radius = config['agents']['flocking']['separation_radius'] if flocking_condition else 0
 sep_weight = config['agents']['flocking']['separation_weight'] if flocking_condition else 0
 aln_weight = config['agents']['flocking']['alignment_weight'] if flocking_condition else 0
 chn_weight = config['agents']['flocking']['cohesion_weight'] if flocking_condition else 0
-sep_radius = config['agents']['flocking']['separation_radius'] if flocking_condition else 0
 max_flocking_speed = config['agents']['flocking']['max_flocking_speed'] if flocking_condition else 0
 max_flocking_accel = config['agents']['flocking']['max_flocking_accel'] if flocking_condition else 0
+goal_region_enabled = config['simulation']['rendering_options']['agent_flocking_waypoint'] if flocking_condition else False
+goal_radius = config['agents']['flocking']['goal_radius'] if flocking_condition else 0
 waypoint_transition_radius = config['agents']['flocking']['waypoint_transition_radius'] if flocking_condition else 0
-
-# Load behavior tree
-behavior_tree_xml = config['agents']['behavior_tree_xml']
-xml_root = parse_behavior_tree(f"bt_xml/{behavior_tree_xml}")
 
 
 def generate_agents(tasks_info):
@@ -109,6 +113,7 @@ class Agent:
         self.sep_weight = sep_weight
         self.aln_weight = aln_weight
         self.chn_weight = chn_weight
+        self.goal_radius = goal_radius
         self.waypoint_transition_radius = waypoint_transition_radius
         self.max_flocking_speed = max_flocking_speed
         self.max_flocking_accel = max_flocking_accel
@@ -203,20 +208,6 @@ class Agent:
         self.acceleration = self.limit(self.acceleration, self.max_flocking_accel)
         
 
-    def locomotion_rule(self, blackboard, waypoint):
-
-        self.current_flocking_waypoint = waypoint
-        if waypoint is None:
-            return pygame.Vector2(0.0, 0.0)
-
-        #Deriving the Locomotion Vector towards the current waypoint
-        locomotion_vector = self.current_flocking_waypoint - blackboard['CoM']
-        if locomotion_vector.length() > 0:
-            locomotion_vector.normalize_ip()
-            locomotion_vector *= self.max_flocking_speed
-        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
-    
-
     def cohesion_rule(self, blackboard):
         
         # Derive Unit Vector to move agents to their CoM
@@ -289,9 +280,61 @@ class Agent:
             vy = self.sep_weight * separation_vector.y
 
         return (round(vx,3), round(vy,3))
-    
 
-    
+
+    # MODIFY: Hybridized Locomotion Integrated into the current Mechanism
+    def locomotion_rule(self, blackboard, waypoint):
+
+        # Update the current flocking waypoint for visualization
+        self.current_flocking_waypoint = waypoint
+        
+        if waypoint is None:
+            return pygame.Vector2(0.0, 0.0)
+        
+        # Calculating Distance to Waypoint
+        distance_to_waypoint = (waypoint - self.position).length()
+
+        # Check if the agent has reached the waypoint, then stop and return SUCCESS
+        if distance_to_waypoint < (self.goal_radius/2):
+            if self.agent_id == 0:
+                print(f"Agent {self.agent_id} reached the waypoint at {waypoint}.")
+            return pygame.Vector2(0.0, 0.0)
+        
+        # Change Separation Radius when close to waypoint
+        if distance_to_waypoint < self.waypoint_transition_radius:
+            self.sep_radius -= sep_radius_delta
+            self.sep_radius = max(self.sep_radius, min_sep_radius)  # Clamp to min_sep_radius
+        
+        # Compute Locomotion Vector from Mechanism 1 (CoM -> Waypoint)
+        l1_vector = pygame.Vector2(0.0, 0.0)
+        if blackboard['CoM'] and waypoint:
+            l1_vector = waypoint - blackboard['CoM']
+        else:
+            l1_vector = pygame.Vector2(0.0, 0.0)
+
+        # Compute Locomotion Vector from Mechanism 2 (Individual Point -> Waypoint)
+        l2_vector = pygame.Vector2(0.0, 0.0)
+        if waypoint:
+            l2_vector = waypoint - self.position
+        else:
+            l2_vector = pygame.Vector2(0.0, 0.0)
+
+        # Assess Weight for Locomotion Mechanism 2
+        w2 = 0.0
+        if distance_to_waypoint < goal_radius:
+            w2 = 1.0
+        elif distance_to_waypoint > self.waypoint_transition_radius:
+            w2 = 0.0
+        else:
+            w2 = (self.waypoint_transition_radius - distance_to_waypoint) / (self.waypoint_transition_radius - goal_radius)
+
+        # Combine Locomotion Vectors with Weights
+        locomotion_vector = (1 - w2) * l1_vector + w2 * l2_vector
+
+        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
+
+
+
     '''
     Methods for Agent's Kinematics
     '''
@@ -326,14 +369,7 @@ class Agent:
         
         self.rotation = self.apply_low_pass_filter_angle(target_rotation, self.smoothed_rotation)
         self.smoothed_rotation = self.rotation
-    
-
-    # def agent_log(self):
-    #     print(f"Agent {self.agent_id} \n" +
-    #           f"Pos: ({self.position.x:.2f}, {self.position.y:.2f}) \n" +
-    #           f"Vel: ({self.velocity.x:.2f}, {self.velocity.y:.2f}) \n" +
-    #           f"Accel: ({self.acceleration.x:.2f}, {self.acceleration.y:.2f})", flush=True)
-        
+           
 
     def reset_movement(self):
         self.velocity = pygame.Vector2(0, 0)
@@ -365,24 +401,22 @@ class Agent:
 
     # MODIFY: Detect if the agent has a boundary_weight attribute attribute passed from modified_bt module. If so, apply the boundary steering force as well... 
     def follow(self, target, weight=1.0):
-        # Calculate locomotion_vector velocity
-        locomotion_vector = target - self.position
-        d = locomotion_vector.length()
+        
+        # Calculate desired_vector velocity
+        desired_vector = target - self.position
+        d = desired_vector.length()
 
         if d < agent_approaching_to_target_radius:
             # Apply arrival behavior
-            locomotion_vector.normalize_ip()
-            locomotion_vector *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
+            desired_vector.normalize_ip()
+            desired_vector *= self.max_speed * (d / agent_approaching_to_target_radius)  # Adjust speed based on distance
         else:
+            desired_vector.normalize_ip()
+            desired_vector *= self.max_speed
             if weight != 1.0:
-                locomotion_vector.normalize_ip()
-                locomotion_vector *= self.max_speed
-                locomotion_vector *= weight   # Apply the weight for boundary steering force
-            else:
-                locomotion_vector.normalize_ip()
-                locomotion_vector *= self.max_speed
+                desired_vector *= weight   # Apply the weight for boundary steering force
 
-        steer = locomotion_vector - self.velocity
+        steer = desired_vector - self.velocity
         steer = self.limit(steer, self.max_accel)
         self.applyForce(steer)
 
@@ -418,7 +452,16 @@ class Agent:
         # Draw track
         if len(self.memory_location) >= 2:
             pygame.draw.lines(screen, self.color, False, self.memory_location, 1)               
-        
+
+
+    # Draw Destination Region for Observing Agent's Movement
+    def draw_flocking_waypoint(self, screen):
+
+        # Draw the goal region if enabled and if there is an Active Waypoint
+        if self.agent_id == 0 and self.current_flocking_waypoint is not None:
+            pygame.draw.circle(screen, (255, 0, 0), (int(self.current_flocking_waypoint.x), int(self.current_flocking_waypoint.y)), self.goal_radius)                   # Red circle for waypoint
+            pygame.draw.circle(screen, (0, 0, 0), (int(self.current_flocking_waypoint.x), int(self.current_flocking_waypoint.y)), self.waypoint_transition_radius, 3)   # Black circle around the waypoint
+
 
     def draw_communication_topology(self, screen, agents):
      # Draw lines to neighbor agents
@@ -575,3 +618,24 @@ class Agent:
                 ]                                                
         
         return local_tasks_info 
+    
+
+
+
+    # def locomotion_rule(self, blackboard, waypoint):
+    #     self.current_flocking_waypoint = waypoint
+    #     if waypoint is None:
+    #         return pygame.Vector2(0.0, 0.0)
+
+    #     #Deriving the Locomotion Vector towards the current waypoint
+    #     locomotion_vector = self.current_flocking_waypoint - blackboard['CoM']
+    #     if locomotion_vector.length() > 0:
+    #         locomotion_vector.normalize_ip()
+    #         locomotion_vector *= self.max_flocking_speed
+    #     return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))    
+
+    # def agent_log(self):
+    #     print(f"Agent {self.agent_id} \n" +
+    #           f"Pos: ({self.position.x:.2f}, {self.position.y:.2f}) \n" +
+    #           f"Vel: ({self.velocity.x:.2f}, {self.velocity.y:.2f}) \n" +
+    #           f"Accel: ({self.acceleration.x:.2f}, {self.acceleration.y:.2f})", flush=True)

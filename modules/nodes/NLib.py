@@ -45,6 +45,29 @@ class Fallback(Node):
                 return status
         return Status.FAILURE
 
+# Parallel node: Runs all child nodes simultaneously until success or failure thresholds are met
+class Parallel(Node):
+    def __init__(self, name, children, success_threshold=None, failure_threshold=None):
+        super().__init__(name)
+        self.children = children
+        self.success_threshold = success_threshold if success_threshold is not None else len(children)
+        self.failure_threshold = failure_threshold if failure_threshold is not None else 1
+
+    async def run(self, agent, blackboard):
+        success_count = 0
+        failure_count = 0
+        for child in self.children:
+            status = await child.run(agent, blackboard)
+            if status == Status.SUCCESS:
+                success_count += 1
+                if success_count >= self.success_threshold:
+                    return Status.SUCCESS
+            elif status == Status.FAILURE:
+                failure_count += 1
+                if failure_count >= self.failure_threshold:
+                    return Status.FAILURE
+        return Status.RUNNING
+
 # Synchronous action node
 class SyncAction(Node):
     def __init__(self, name, action):

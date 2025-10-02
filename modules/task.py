@@ -23,7 +23,6 @@ def generate_tasks(task_quantity=None, task_id_start = 0):
                                         task_locations['y_min'],
                                         task_locations['y_max'],
                                         radius=task_locations['non_overlap_radius'])
-
     # Initialize tasks
     tasks = [Task(idx + task_id_start, pos) for idx, pos in enumerate(tasks_positions)]
     return tasks
@@ -46,7 +45,6 @@ class Task:
     def set_done(self):
         self.completed = True
 
-
     def reduce_amount(self, work_rate):
         self.amount -= work_rate * sampling_time
         if self.amount <= 0:
@@ -60,7 +58,6 @@ class Task:
         self.radius = self.amount / config['simulation']['task_visualisation_factor']        
         if not self.completed:
             pygame.draw.circle(screen, self.color, self.position, int(self.radius))
-
 
     def draw_task_id(self, screen):
         if not self.completed:
