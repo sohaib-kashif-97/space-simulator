@@ -13,14 +13,10 @@
 
   <!-- Description of Node Models (used by Groot) -->
   <TreeNodesModel>
-    <Action ID="NearBoundaryCondition"
-            editable="true"/>
-    <Action ID="StayWithinBoundsNode"
-            editable="true"/>
-    <Action ID="HybridLocomotionNode"
-            editable="true"/>
-    <Action ID="FlockingNode"
-            editable="true"/>
+    <Action ID="NearBoundaryCondition" editable="true"/>
+    <Action ID="StayWithinBoundsNode" editable="true"/>
+    <Action ID="HybridLocomotionNode" editable="true"/>
+    <Action ID="FlockingNode" editable="true"/>
   </TreeNodesModel>
 </root>
 

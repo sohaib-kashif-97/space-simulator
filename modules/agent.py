@@ -188,10 +188,10 @@ class Agent:
     '''
     Methods for Agent's Flocking Behavior
     '''
-    def flocking(self, blackboard, waypoint):
-        
+    def flocking(self, blackboard):
+
         # Retrieve Agent's current position from the blackboard
-        locomotion_vel = self.locomotion_rule(blackboard, waypoint)
+        locomotion_vel = self.locomotion_rule(blackboard)
         cohesion_vel = self.cohesion_rule(blackboard)
         alignment_vel = self.alignment_rule()
         separation_vel = self.separation_rule()
@@ -206,7 +206,62 @@ class Agent:
         
         self.acceleration = (net_agent_vel - self.velocity) / sampling_time
         self.acceleration = self.limit(self.acceleration, self.max_flocking_accel)
+
+
+    # MODIFY: Hybridized Locomotion Integrated into the current Mechanism
+    def locomotion_rule(self, blackboard):
+
+        # Update the current flocking waypoint for visualization
+        self.current_flocking_waypoint = blackboard['current_waypoint']
         
+        if self.current_flocking_waypoint is None:
+            return pygame.Vector2(0.0, 0.0)
+        
+        # Calculating Distance to Waypoint
+        distance_to_waypoint = (self.current_flocking_waypoint - self.position).length()
+
+        # Check if the agent has reached the waypoint, then stop and return SUCCESS
+        if distance_to_waypoint < (self.goal_radius/2):
+            if self.agent_id == 0:
+                print(f"Agent {self.agent_id} reached the waypoint at {self.current_flocking_waypoint}.")
+            return pygame.Vector2(0.0, 0.0)
+        
+        # Change Separation Radius when close to waypoint
+        if distance_to_waypoint < self.waypoint_transition_radius:
+            self.sep_radius -= sep_radius_delta
+            self.sep_radius = max(self.sep_radius, min_sep_radius)  # Clamp to min_sep_radius
+        else:
+            self.sep_radius += sep_radius_delta
+            self.sep_radius = min(self.sep_radius, max_sep_radius)  # Clamp to max_sep_radius
+        
+        # Compute Locomotion Vector from Mechanism 1 (CoM -> Waypoint)
+        l1_vector = pygame.Vector2(0.0, 0.0)
+        if blackboard['CoM'] and self.current_flocking_waypoint:
+            l1_vector = self.current_flocking_waypoint - blackboard['CoM']
+        else:
+            l1_vector = pygame.Vector2(0.0, 0.0)
+
+        # Compute Locomotion Vector from Mechanism 2 (Individual Point -> Waypoint)
+        l2_vector = pygame.Vector2(0.0, 0.0)
+        if self.current_flocking_waypoint:
+            l2_vector = self.current_flocking_waypoint - self.position
+        else:
+            l2_vector = pygame.Vector2(0.0, 0.0)
+
+        # Assess Weight for Locomotion Mechanism 2
+        w2 = 0.0
+        if distance_to_waypoint < goal_radius:
+            w2 = 1.0
+        elif distance_to_waypoint > self.waypoint_transition_radius:
+            w2 = 0.0
+        else:
+            w2 = (self.waypoint_transition_radius - distance_to_waypoint) / (self.waypoint_transition_radius - goal_radius)
+
+        # Combine Locomotion Vectors with Weights
+        locomotion_vector = (1 - w2) * l1_vector + w2 * l2_vector
+
+        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
+
 
     def cohesion_rule(self, blackboard):
         
@@ -280,58 +335,6 @@ class Agent:
             vy = self.sep_weight * separation_vector.y
 
         return (round(vx,3), round(vy,3))
-
-
-    # MODIFY: Hybridized Locomotion Integrated into the current Mechanism
-    def locomotion_rule(self, blackboard, waypoint):
-
-        # Update the current flocking waypoint for visualization
-        self.current_flocking_waypoint = waypoint
-        
-        if waypoint is None:
-            return pygame.Vector2(0.0, 0.0)
-        
-        # Calculating Distance to Waypoint
-        distance_to_waypoint = (waypoint - self.position).length()
-
-        # Check if the agent has reached the waypoint, then stop and return SUCCESS
-        if distance_to_waypoint < (self.goal_radius/2):
-            if self.agent_id == 0:
-                print(f"Agent {self.agent_id} reached the waypoint at {waypoint}.")
-            return pygame.Vector2(0.0, 0.0)
-        
-        # Change Separation Radius when close to waypoint
-        if distance_to_waypoint < self.waypoint_transition_radius:
-            self.sep_radius -= sep_radius_delta
-            self.sep_radius = max(self.sep_radius, min_sep_radius)  # Clamp to min_sep_radius
-        
-        # Compute Locomotion Vector from Mechanism 1 (CoM -> Waypoint)
-        l1_vector = pygame.Vector2(0.0, 0.0)
-        if blackboard['CoM'] and waypoint:
-            l1_vector = waypoint - blackboard['CoM']
-        else:
-            l1_vector = pygame.Vector2(0.0, 0.0)
-
-        # Compute Locomotion Vector from Mechanism 2 (Individual Point -> Waypoint)
-        l2_vector = pygame.Vector2(0.0, 0.0)
-        if waypoint:
-            l2_vector = waypoint - self.position
-        else:
-            l2_vector = pygame.Vector2(0.0, 0.0)
-
-        # Assess Weight for Locomotion Mechanism 2
-        w2 = 0.0
-        if distance_to_waypoint < goal_radius:
-            w2 = 1.0
-        elif distance_to_waypoint > self.waypoint_transition_radius:
-            w2 = 0.0
-        else:
-            w2 = (self.waypoint_transition_radius - distance_to_waypoint) / (self.waypoint_transition_radius - goal_radius)
-
-        # Combine Locomotion Vectors with Weights
-        locomotion_vector = (1 - w2) * l1_vector + w2 * l2_vector
-
-        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
 
 
 

@@ -1,0 +1,100 @@
+decision_making:
+  plugin: plugins.cbba.cbba.CBBA
+  CBBA:  
+    max_tasks_per_agent: 5 
+    execute_movements_during_convergence: False    
+    task_reward_discount_factor: 0.999 
+    winning_bid_cancel: True
+    acceptable_empty_bundle_duration: 500 # sec
+
+
+agents:
+  behavior_tree_xml: flocking_bt.xml  #stayinbounds_bt.xml flocking_bt.xml 
+  quantity: 10                         
+  locations:        # Refer values w.r.t Resolution
+    x_min: 750     #650,1500   
+    x_max: 900     #750,1550   
+    y_min: 450      #450,1000   
+    y_max: 750     #750,1050   
+    non_overlap_radius: 15
+  ema_alpha_vel: 0.3
+  ema_alpha_rot: 0.05
+  max_speed: 0.25  
+  max_accel: 0.05
+  max_angular_speed: 0.038            # DEFAULT: 0.25 -- About 15 Degrees
+  target_approaching_radius: 50
+  work_rate: 1                        # work rate for each agent (per 1.0/simulation.sampling_freq)
+  communication_radius: 0             # 0 represents "global", meaning that each agent can access to the information of all the other agents
+  situation_awareness_radius: 400     # 0 represents "global", meaning that each agent can access to the information of all the tasks
+  random_exploration_duration: 1000.0 # sec
+  flocking:
+    enabled: True
+    waypoint: 
+      x: 200
+      y: 200
+      duration: 3000.0  # Allow the agents for flocking for a while smoothly before they change direction.
+    separation_radius: 100     # SAME! (100)
+    sep_radius_delta: 0.1
+    min_sep_radius: 50        # Ensure that this value is greater than almost twice the agent's size (25)
+    max_sep_radius: 100        # ALSO SAME! (100)
+    separation_weight: 21     # This value allows ideal Flocking  -->  S:A:C = 4:1:1
+    alignment_weight: 5.5
+    cohesion_weight: 5.5
+    min_flocking_speed: 0.05
+    max_flocking_speed: 0.15
+    max_flocking_accel: 0.03
+    goal_radius: 50                   # Ten times the Agent Quantity (50)
+    waypoint_transition_radius: 125    # 2.5 times the Goal Radius (125)
+  boundary:
+    avoidance_threshold: 470           # Maximum possible distance is Min(W,H) - Boundary Margin  (470 + 30)        
+    margin: 30
+    weight: 200
+
+
+tasks:
+  quantity: 1
+  locations:
+    x_min: 0
+    x_max: 350
+    y_min: 0
+    y_max: 250
+    non_overlap_radius: 0
+  threshold_done_by_arrival: 10.0
+  amounts:  # Added amounts range for tasks
+    min: 12.0
+    max: 30.0      
+  dynamic_task_generation:
+    enabled: False
+    interval_seconds: 1000
+    max_generations: 3
+    tasks_per_generation: 50
+
+
+simulation:
+  sampling_freq: 1.0 
+  speed_up_factor: 0 # 0 mean max booster; 1 means normal; 10 means 10-times faster
+  max_simulation_time: 0 # 0 means no limit
+  agent_track_size: 400  
+  screen_width: 1400 
+  screen_height: 1000 
+  gif_recording_fps: 10  
+  task_visualisation_factor: 3  # visualization factor for tasks : 10 means converting 10 amount to 1 pixel
+  profiling_mode: False
+  rendering_mode: Screen  # Options: Screen; Terminal; None
+  rendering_options: # Only works if `rendering_mode` is `Screen`
+    agent_tail: True
+    agent_communication_topology: True
+    agent_flocking_waypoint: True
+    agent_situation_awareness_circle: False
+    agent_id: True
+    agent_work_done: True
+    agent_assigned_task_id: True
+    agent_path_to_assigned_tasks: True
+    task_id: False
+  saving_options:
+    output_folder: output
+    with_date_subfolder: False
+    save_gif: False  # Only works if `rendering_mode` is `Screen`
+    save_timewise_result_csv: False   
+    save_agentwise_result_csv: False
+    save_config_yaml: False

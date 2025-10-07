@@ -13,6 +13,7 @@ from plugins.my_decision_making_plugin import *
 --- SIMULATION CONFIGURATION PARAMETERS --- 
 '''
 
+
 # Task Parameters
 target_arrive_threshold = config['tasks']['threshold_done_by_arrival']
 task_locations = config['tasks']['locations']
@@ -31,14 +32,15 @@ flocking_enabled = config.get('agents', {}).get('flocking', {}).get('enabled', F
 sep_radius_delta = config['agents']['flocking']['sep_radius_delta']
 min_sep_radius = config['agents']['flocking']['min_sep_radius']
 max_sep_radius = config['agents']['flocking']['max_sep_radius']
-flocking_waypoint_duration = config['agents']['flocking']['flocking_waypoint_duration']
+dest_x = config['agents']['flocking']['waypoint']['x']
+dest_y = config['agents']['flocking']['waypoint']['y']
+flocking_waypoint_duration = config['agents']['flocking']['waypoint']['duration']
 goal_radius = config['agents']['flocking']['goal_radius']
 
 # Agent Boundary Avoidance Parameters
-waypoint_transition_radius = config['agents']['flocking']['waypoint_transition_radius']
-boundary_avoidance_waypoint_transition_radius = 5 * waypoint_transition_radius
-boundary_margin = config.get('agents', {}).get('boundary_margin', 100)
-boundary_weight = config.get('agents', {}).get('boundary_weight', 200)
+boundary_avoidance_threshold = config['agents']['boundary']['avoidance_threshold']
+boundary_margin = config['agents']['boundary']['margin'] 
+boundary_weight = config['agents']['boundary']['weight']
 
 # Decision-Making Parameters
 decision_making_module_path = config['decision_making']['plugin']
@@ -182,16 +184,15 @@ integrated into the current Node, to derive the net vector for Flock Movement.
 class FlockingNode(SyncAction):
 
     def __init__(self, name, agent):
-        self.current_waypoint = None
+        self.current_waypoint = pygame.Vector2(dest_x,dest_y)
         self.flocking_move_time = float(0.0)    # Timer to track duration at current waypoint
-        self.leader_id = 0                      # Assume agent 0 is leader.
-        # self.goal_radius = goal_radius
+        self.leader_id = 0                      # Assume agent 0 is leader
         super().__init__(name, self._flocking)
 
 
     def _flocking(self, agent, blackboard):
         
-        # If Flocking is disabled in config, return FAILURE to fallback to other behaviors
+        # If Flocking is disabled in config, return FAILURE
         if not flocking_enabled:  
             return Status.FAILURE
         
@@ -206,37 +207,38 @@ class FlockingNode(SyncAction):
 
         # Handle shared waypoint (leader sets, others follow).
         if agent.agent_id == self.leader_id:
-            if 'common_waypoint' not in blackboard:
-                blackboard['common_waypoint'] = self.set_common_waypoint()
-            current_shared_waypoint = blackboard['common_waypoint']
+            if 'current_waypoint' not in blackboard:
+                blackboard['current_waypoint'] = self.set_common_waypoint()
+            elif self.flocking_move_time > flocking_waypoint_duration:
+                blackboard['current_waypoint'] = self.set_common_waypoint()
+                self.flocking_move_time = 0.0 
+            self.current_waypoint = blackboard['current_waypoint']
         else:
             leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
-            if leader and 'common_waypoint' in leader.blackboard:
-                current_shared_waypoint = leader.blackboard['common_waypoint']
-            else:
-                current_shared_waypoint = None
-        
-        # Detect waypoint change and reset timer for sync.
-        if self.current_waypoint != current_shared_waypoint:
-            self.current_waypoint = current_shared_waypoint
-            self.flocking_move_time = 0.0
-        
-        if self.flocking_move_time > flocking_waypoint_duration:
-            # Leader updates the shared waypoint.
-            if agent.agent_id == self.leader_id:
-                blackboard['common_waypoint'] = self.set_common_waypoint()
-            self.flocking_move_time = 0.0             
-        else:
-            # If niether, perform flocking behavior and keep timer running
-            self.flocking_move_time += sampling_time 
+            if leader and 'current_waypoint' in leader.blackboard:
+                self.current_waypoint = leader.blackboard['current_waypoint']
 
-        agent.flocking(blackboard, self.current_waypoint) 
-        return Status.RUNNING  # Continue flocking over ticks
+        # If not a leader, waypoint will be set w.r.t leader
+        if 'current_waypoint' not in blackboard:
+            blackboard['current_waypoint'] = self.current_waypoint
+            # print(blackboard['current_waypoint'])
+        
+        blackboard['current_waypoint'] = self.current_waypoint
+        # print(blackboard['current_waypoint'])
+        
+        # Implement Flocking Behavior with computed CoM and Waypoint
+        agent.flocking(blackboard) 
+        
+        # Update Flocking Timer
+        self.flocking_move_time += sampling_time 
+        
+        # Continue flocking over ticks
+        return Status.RUNNING  
 
 
     def set_common_waypoint(self):
-        x = random.randint( 0, int(0.25 * screen_width))
-        y = random.randint( 0, int(0.75 * screen_height))
+        x = random.randint(150, int(0.45 * screen_width))
+        y = random.randint(150, int(0.45 * screen_height))
         return pygame.Vector2(x, y)
 
 
@@ -278,7 +280,7 @@ class StayWithinBoundsNode(SyncAction):
     def _stay_within_bounds(self, agent, blackboard):
         center_pos = pygame.Vector2(screen_width / 2, screen_height / 2)
         distance = (agent.position - center_pos).length()
-        if distance > boundary_avoidance_waypoint_transition_radius:
+        if distance > boundary_avoidance_threshold:
             agent.follow(center_pos, weight=boundary_weight)
             return Status.RUNNING  # Continue running to keep adjusting position.
         else:
