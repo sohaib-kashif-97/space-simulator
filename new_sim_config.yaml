@@ -9,8 +9,8 @@ decision_making:
 
 
 agents:
-  behavior_tree_xml: stayinbounds_bt.xml  #flocking_bt.xml
-  quantity: 5
+  behavior_tree_xml: default_bt.xml  
+  quantity: 25
   locations:
     x_min: 0
     x_max: 1400
@@ -34,12 +34,11 @@ agents:
     max_flocking_speed: 0.15
     max_flocking_accel: 0.03
     waypoint_transition_radius: 100
-    #flocking_duration: 4000.0       #Allow the agents for flocking for a while smoothly before they change direction.
     
 
 
 tasks:
-  quantity: 1
+  quantity: 50
   locations:
     x_min: 650    #1500   
     x_max: 750    #1550   
@@ -70,7 +69,7 @@ simulation:
   rendering_mode: Screen  # Options: Screen; Terminal; None
   rendering_options: # Only works if `rendering_mode` is `Screen`
     agent_tail: True
-    agent_communication_topology: True
+    agent_communication_topology: False
     agent_situation_awareness_circle: False
     agent_id: True
     agent_work_done: True

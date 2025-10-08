@@ -33,14 +33,11 @@ class BehaviorTreeList:
     ]
 
     ACTION_NODES = [
-        # 'ReturnToBaseNode',
-        # 'LocalSensingNode',
-        # 'DecisionMakingNode',
-        # 'TaskExecutingNode',  
+        'LocalSensingNode',
+        'DecisionMakingNode',
+        'TaskExecutingNode',  
         'FlockingNode',
-        'StayWithinBoundsNode',
         'ExplorationNode', 
-        'NearBoundaryCondition',
     ]
 
 

@@ -155,8 +155,6 @@ class Agent:
         for other_agent in self.agents_nearby:
             if other_agent.agent_id != self.agent_id:                         
                 self.receive_message(other_agent.message_to_share)
-                # other_agent.receive_message(self.message_to_share)                          
-
         return self.agents_nearby
 
 
@@ -406,7 +404,7 @@ class Agent:
         
 
     def draw_communication_topology(self, screen, agents):
-     # Draw lines to neighbor agents
+        # Draw lines to neighbor agents
         for neighbor_agent in self.agents_nearby:
             if neighbor_agent.agent_id > self.agent_id:
                 neighbor_position = agents[neighbor_agent.agent_id].position
