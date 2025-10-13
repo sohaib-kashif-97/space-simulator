@@ -205,6 +205,7 @@ class Agent:
     '''
     Methods for Agent's Flocking Behavior
     '''
+
     def flocking(self, blackboard):
 
         # Set Device for Learning
@@ -215,16 +216,14 @@ class Agent:
         # Collect all positions/velocities as tensors (N x 2)
         positions = torch.stack([a.position for a in flock_agents]).to(self.device)  # (N, 2)
         velocities = torch.stack([a.velocity for a in flock_agents]).to(self.device)  # (N, 2)
-        current_pos = self.position.unsqueeze(0)  # (1, 2)
-        current_vel = self.velocity.unsqueeze(0)  # (1, 2)
+        # current_pos = self.position.unsqueeze(0)  # (1, 2)
+        # current_vel = self.velocity.unsqueeze(0)  # (1, 2)
 
-        
-        
         # Retrieve Agent's current position from the blackboard
         locomotion_vel = self.locomotion_rule(blackboard)
-        cohesion_vel = self.cohesion_rule(blackboard)
-        alignment_vel = self.alignment_rule()
-        separation_vel = self.separation_rule(positions, current_pos)
+        cohesion_vel = self.cohesion_rule(blackboard, positions)
+        alignment_vel = self.alignment_rule(velocities)
+        separation_vel = self.separation_rule(positions)
 
         net_agent_vel = pygame.Vector2(
             locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0],
@@ -340,16 +339,16 @@ class Agent:
         separation_vector = torch.zeros(2, device=self.device)
         
         # Pairwise vectorized Distances
-        deltas = positions - pos  # (N, 2)
+        deltas = positions - self.position  # (N, 2)
         dists = torch.norm(deltas, dim=1)  # (N,)
 
         # Common mask for sep, aln, chn
         mask = (dists < self.sep_radius) & (dists > 0)
         sep_count = mask.sum().item()  # For dynamic radius update
         
-        local_agents_info = self.get_agents_nearby(self.sep_radius)
-        total_nearby_agents = len(local_agents_info)
-        count = 0
+        # local_agents_info = self.get_agents_nearby(self.sep_radius)
+        # total_nearby_agents = len(local_agents_info)
+        # count = 0
         
         # Comparing all boids with one another to check the separation criteria
         for other_agent in local_agents_info:
