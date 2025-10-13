@@ -1,7 +1,8 @@
 import pygame
+import torch
 import math
 import copy
-from modules.bt.modified_btv5 import *            #NOTE: ADJUSTED TO MODIFIED BT
+from modules.bt.modified_btv6 import *            #NOTE: ADJUSTED TO MODIFIED BT
 from modules.utils import config, generate_positions, parse_behavior_tree
 from modules.task import task_colors
 
@@ -14,6 +15,7 @@ sampling_time = 1.0 / sampling_freq  # in seconds
 screen_width = config['simulation']['screen_width']
 screen_height = config['simulation']['screen_height']
 agent_track_size = config['simulation']['agent_track_size']
+device = config['simulation']['device']
 
 # Agent BT xml file
 behavior_tree_xml = config['agents']['behavior_tree_xml']
@@ -77,9 +79,9 @@ class Agent:
         self.blackboard = {}                                                # Blackboard --> { BT Node: Comprises of an Agent's Local info including messages, tasks, etc}.
         
         # Agent Kinematics and Dynamics Attributes
-        self.position = pygame.Vector2(position)
-        self.velocity = pygame.Vector2(0, 0)
-        self.acceleration = pygame.Vector2(0, 0)
+        self.position = torch.tensor(position, dtype=torch.float32, device= device)
+        self.velocity = torch.zeros(2, dtype=torch.float32, device= device)
+        self.acceleration = torch.zeros(2, dtype=torch.float32, device= device)
         self.max_speed = agent_max_speed
         self.max_accel = agent_max_accel
         self.max_angular_speed = max_angular_speed
@@ -118,6 +120,21 @@ class Agent:
         self.max_flocking_speed = max_flocking_speed
         self.max_flocking_accel = max_flocking_accel
 
+
+
+
+
+    '''
+    Methods to get CPU Vector2 for Pygame 
+    '''
+
+    def get_pygame_position(self):
+        return pygame.Vector2(self.position.cpu().numpy())
+
+
+    def get_pygame_velocity(self):  # If needed for drawing
+        return pygame.Vector2(self.velocity.cpu().numpy())
+    
 
 
     '''
@@ -190,11 +207,24 @@ class Agent:
     '''
     def flocking(self, blackboard):
 
+        # Set Device for Learning
+        flock_agents = self.get_all_other_agents()
+        if not flock_agents:
+            return
+        
+        # Collect all positions/velocities as tensors (N x 2)
+        positions = torch.stack([a.position for a in flock_agents]).to(self.device)  # (N, 2)
+        velocities = torch.stack([a.velocity for a in flock_agents]).to(self.device)  # (N, 2)
+        current_pos = self.position.unsqueeze(0)  # (1, 2)
+        current_vel = self.velocity.unsqueeze(0)  # (1, 2)
+
+        
+        
         # Retrieve Agent's current position from the blackboard
         locomotion_vel = self.locomotion_rule(blackboard)
         cohesion_vel = self.cohesion_rule(blackboard)
         alignment_vel = self.alignment_rule()
-        separation_vel = self.separation_rule()
+        separation_vel = self.separation_rule(positions, current_pos)
 
         net_agent_vel = pygame.Vector2(
             locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0],
@@ -304,10 +334,19 @@ class Agent:
         return (round(alignment_vector.x, 3), round(alignment_vector.y, 3))
     
 
-    def separation_rule(self):
+    def separation_rule(self, positions, pos):
         
         # Initializing variables relative to Separation Rule
-        separation_vector = pygame.Vector2(0, 0)
+        separation_vector = torch.zeros(2, device=self.device)
+        
+        # Pairwise vectorized Distances
+        deltas = positions - pos  # (N, 2)
+        dists = torch.norm(deltas, dim=1)  # (N,)
+
+        # Common mask for sep, aln, chn
+        mask = (dists < self.sep_radius) & (dists > 0)
+        sep_count = mask.sum().item()  # For dynamic radius update
+        
         local_agents_info = self.get_agents_nearby(self.sep_radius)
         total_nearby_agents = len(local_agents_info)
         count = 0
@@ -440,12 +479,13 @@ class Agent:
     '''
     def draw(self, screen):
         size = 10
+        pos = self.get_pygame_position()
         angle = self.rotation
 
         # Calculate the triangle points based on the current position and angle
-        p1 = pygame.Vector2(self.position.x + size * math.cos(angle), self.position.y + size * math.sin(angle))
-        p2 = pygame.Vector2(self.position.x + size * math.cos(angle + 2.5), self.position.y + size * math.sin(angle + 2.5))
-        p3 = pygame.Vector2(self.position.x + size * math.cos(angle - 2.5), self.position.y + size * math.sin(angle - 2.5))
+        p1 = pygame.Vector2(pos.x + size * math.cos(angle), pos.y + size * math.sin(angle))
+        p2 = pygame.Vector2(pos.x + size * math.cos(angle + 2.5), pos.y + size * math.sin(angle + 2.5))
+        p3 = pygame.Vector2(pos.x + size * math.cos(angle - 2.5), pos.y + size * math.sin(angle - 2.5))
 
         self.update_color()
         pygame.draw.polygon(screen, self.color, [p1, p2, p3])
@@ -467,46 +507,67 @@ class Agent:
 
 
     def draw_communication_topology(self, screen, agents):
-     # Draw lines to neighbor agents
+        
+        # Get Position
+        pos = self.get_pygame_position()
+        
+        # Draw lines to neighbor agents
         for neighbor_agent in self.agents_nearby:
             if neighbor_agent.agent_id > self.agent_id:
                 neighbor_position = agents[neighbor_agent.agent_id].position
-                pygame.draw.line(screen, (200, 200, 200), (int(self.position.x), int(self.position.y)), (int(neighbor_position.x), int(neighbor_position.y)))
+                pygame.draw.line(screen, (200, 200, 200), (int(pos.x), int(pos.y)), (int(neighbor_position.x), int(neighbor_position.y)))
 
 
     def draw_agent_id(self, screen):
+
+        # Get Position
+        pos = self.get_pygame_position()
+        
         # Draw assigned_task_id next to agent position
         text_surface = font.render(f"agent_id: {self.agent_id}", True, (50, 50, 50))
-        screen.blit(text_surface, (self.position[0] + 10, self.position[1] - 10))
+        screen.blit(text_surface, (pos[0] + 10, pos[1] - 10))
 
 
     def draw_assigned_task_id(self, screen):
+        
+        # Get Position
+        pos = self.get_pygame_position()
+        
         # Draw assigned_task_id next to agent position
         if len(self.planned_tasks) > 0:
             assigned_task_id_list = [task.task_id for task in self.planned_tasks]
         else:
             assigned_task_id_list = self.assigned_task_id
         text_surface = font.render(f"task_id: {assigned_task_id_list}", True, (50, 50, 50))
-        screen.blit(text_surface, (self.position[0] + 10, self.position[1]))
+        screen.blit(text_surface, (pos[0] + 10, pos[1]))
 
 
     def draw_work_done(self, screen):
+        
+        # Get Position
+        pos = self.get_pygame_position()
+        
         # Draw assigned_task_id next to agent position
         text_surface = font.render(f"dist: {self.distance_moved:.1f}", True, (50, 50, 50))
-        screen.blit(text_surface, (self.position[0] + 10, self.position[1] + 10))
+        screen.blit(text_surface, (pos[0] + 10, pos[1] + 10))
         text_surface = font.render(f"work: {self.task_amount_done:.1f}", True, (50, 50, 50))
-        screen.blit(text_surface, (self.position[0] + 10, self.position[1] + 20))
+        screen.blit(text_surface, (pos[0] + 10, pos[1] + 20))
 
 
     def draw_situation_awareness_circle(self, screen):
+        
+        # Get Position
+        pos = self.get_pygame_position()
+        
         # Draw the situation awareness radius circle    
         if self.situation_awareness_radius > 0:    
-            pygame.draw.circle(screen, self.color, (self.position[0], self.position[1]), self.situation_awareness_radius, 1)
+            pygame.draw.circle(screen, self.color, (pos[0], pos[1]), self.situation_awareness_radius, 1)
 
 
     def draw_path_to_assigned_tasks(self, screen):
+        
         # Starting position is the agent's current position
-        start_pos = self.position
+        start_pos = self.get_pygame_position()
 
         # Define line thickness
         line_thickness = 3  # Set the locomotion_vector thickness for the lines        

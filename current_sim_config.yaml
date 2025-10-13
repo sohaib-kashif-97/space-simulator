@@ -9,13 +9,13 @@ decision_making:
 
 
 agents:
-  behavior_tree_xml: flocking_bt.xml  #stayinbounds_bt.xml flocking_bt.xml 
-  quantity: 5 #5                         
-  locations:        # Refer values w.r.t Resolution
-    x_min: 1200     #650,1500   
-    x_max: 1550     #750,1550   
-    y_min: 900      #450,1000   
-    y_max: 1100     #750,1050   
+  behavior_tree_xml: flocking_bt.xml  # stayinbounds_bt.xml 
+  quantity: 8                         # 5                         
+  locations:                          # Refer values w.r.t Resolution
+    x_min: 1200                       # 650,1500   
+    x_max: 1550                       # 750,1550   
+    y_min: 900                        # 450,1000   
+    y_max: 1100                       # 750,1050   
     non_overlap_radius: 15
   ema_alpha_vel: 0.3
   ema_alpha_rot: 0.05
@@ -32,22 +32,22 @@ agents:
     waypoint: 
       x: 200
       y: 200
-      duration: 3000.0  # Allow the agents for flocking for a while smoothly before they change direction.
-    separation_radius: 100     # SAME! (75)
+      duration: 3000.0                # Allow the agents for flocking for a while smoothly before they change direction.
+    separation_radius: 75             # SAME! (75)
     sep_radius_delta: 0.1
-    min_sep_radius: 50        # Ensure that this value is greater than almost twice the agent's size (25)
-    max_sep_radius: 100        # ALSO SAME! (75)
-    separation_weight: 21     # This value allows ideal Flocking  -->  S:A:C = 4:1:1
+    min_sep_radius: 25                # Ensure that this value is greater than almost twice the agent's size (25)
+    max_sep_radius: 75                # ALSO SAME! (75)
+    separation_weight: 21             # This value allows ideal Flocking  -->  S:A:C = 4:1:1
     alignment_weight: 5.5
     cohesion_weight: 5.5
     min_flocking_speed: 0.05
     max_flocking_speed: 0.15
     max_flocking_accel: 0.03
     goal_radius: 50                   # Ten times the Agent Quantity (50)
-    waypoint_transition_radius: 125    # 2.5 times the Goal Radius (125)
+    waypoint_transition_radius: 125   # 2.5 times the Goal Radius (125)
   boundary:
-    avoidance_threshold: 500           # Maximum possible distance is Min(W,H) - Boundary Margin  (470 + 30)        
-    margin: 100
+    avoidance_threshold: 570          # Maximum possible distance is Min(W,H) - Boundary Margin  (470 + 30)        
+    margin: 30
     weight: 200
 
 
@@ -71,20 +71,21 @@ tasks:
 
 
 simulation:
+  device: 'cpu'                       # 'cpu' or 'gpu'
   sampling_freq: 1.0 
-  speed_up_factor: 0 # 0 mean max booster; 1 means normal; 10 means 10-times faster
-  max_simulation_time: 0 # 0 means no limit
+  speed_up_factor: 0                  # 0 mean max booster; 1 means normal; 10 means 10-times faster
+  max_simulation_time: 0              # 0 means no limit
   agent_track_size: 400  
   screen_width: 1680 
   screen_height: 1200 
   gif_recording_fps: 10  
-  task_visualisation_factor: 3  # visualization factor for tasks : 10 means converting 10 amount to 1 pixel
+  task_visualisation_factor: 3        # visualization factor for tasks : 10 means converting 10 amount to 1 pixel
   profiling_mode: False
-  rendering_mode: Screen  # Options: Screen; Terminal; None
-  rendering_options: # Only works if `rendering_mode` is `Screen`
+  rendering_mode: Screen              # Options: Screen; Terminal; None
+  rendering_options:                  # Only works if `rendering_mode` is `Screen`
     agent_tail: True
     agent_communication_topology: False
-    agent_flocking_waypoint: False
+    agent_flocking_waypoint: True
     agent_situation_awareness_circle: False
     agent_id: True
     agent_work_done: True

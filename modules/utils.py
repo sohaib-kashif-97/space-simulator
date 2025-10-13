@@ -3,6 +3,7 @@ import random
 import pygame
 import imageio
 import datetime
+import torch
 from PIL import Image
 import os
 import matplotlib.cm as cm
@@ -25,9 +26,15 @@ def set_config(config_file):
     global config
     config = load_config(config_file)
 
+    #Storing Device into the Config File
+    device_str = config['simulation'].get('device', 'cpu')
+    device = torch.device('cuda' if device_str == 'gpu' and torch.cuda.is_available() else 'cpu')
+    config['simulation']['computed_device'] = device  # Store for global access
+    print(f"Using device: {device}")
 
 
-''' Utility Functions for Simulation '''
+
+''' Utility Functions for Simulation Modules '''
 
 # Pre-render static elements
 def pre_render_text(text, font_size, color):
@@ -61,21 +68,21 @@ def parse_behavior_tree(xml_path):
     root = tree.getroot()
     return root
 
+'''
+If same key exists in both dictionaries, add only the max value for the pair. 
+Otherwise, Merge new Key-Value Pair.
+'''
 def merge_dicts(dict1, dict2):
-    # 두 개의 딕셔너리를 복사하여 합칠 딕셔너리를 초기화합니다.
-    merged_dict = dict1.copy()
     
-    # dict2의 항목을 순회합니다.
+    merged_dict = dict1.copy()
+        
     for key, value in dict2.items():
-        # 이미 merged_dict에 같은 키가 있으면 값을 비교하여 최대 값을 설정합니다.
         if key in merged_dict:
             merged_dict[key] = max(merged_dict[key], value)
         else:
-            # 새로운 키일 경우 추가합니다.
             merged_dict[key] = value
             
     return merged_dict    
-
 
 
 # Results saving
