@@ -10,7 +10,7 @@ decision_making:
 
 agents:
   behavior_tree_xml: flocking_bt.xml  #stayinbounds_bt.xml flocking_bt.xml 
-  quantity: 10 #5                         
+  quantity: 5 #5                         
   locations:        # Refer values w.r.t Resolution
     x_min: 1200     #650,1500   
     x_max: 1550     #750,1550   
@@ -71,7 +71,6 @@ tasks:
 
 
 simulation:
-  device: 'cpu'                       # 'cpu' or 'gpu'
   sampling_freq: 1.0 
   speed_up_factor: 0          # 0 mean max booster; 1 means normal; 10 means 10-times faster
   max_simulation_time: 0      # 0 means no limit
@@ -80,7 +79,7 @@ simulation:
   screen_height: 1200 
   gif_recording_fps: 10  
   task_visualisation_factor: 3  # visualization factor for tasks : 10 means converting 10 amount to 1 pixel
-  profiling_mode: True
+  profiling_mode: False
   rendering_mode: Screen  # Options: Screen; Terminal; None
   rendering_options: # Only works if `rendering_mode` is `Screen`
     agent_tail: False

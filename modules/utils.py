@@ -3,7 +3,6 @@ import random
 import pygame
 import imageio
 import datetime
-import torch
 from PIL import Image
 import os
 import matplotlib.cm as cm
@@ -25,12 +24,6 @@ def load_config(config_file):
 def set_config(config_file):
     global config
     config = load_config(config_file)
-
-    #Storing Device into the Config File
-    device_str = config['simulation'].get('device', 'cpu')
-    device = torch.device('cuda' if device_str == 'gpu' and torch.cuda.is_available() else 'cpu')
-    config['simulation']['computed_device'] = device  # Store for global access
-    print(f"Using device: {device}")
 
 
 
