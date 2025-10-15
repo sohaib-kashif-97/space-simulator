@@ -10,7 +10,7 @@ decision_making:
 
 agents:
   behavior_tree_xml: flocking_bt.xml  #stayinbounds_bt.xml flocking_bt.xml 
-  quantity: 5 #5                         
+  quantity: 9 #5                         
   locations:        # Refer values w.r.t Resolution
     x_min: 1200     #650,1500   
     x_max: 1550     #750,1550   

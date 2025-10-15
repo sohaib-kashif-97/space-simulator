@@ -186,6 +186,62 @@ class Agent:
 
 
     '''
+    Methods for Basic Vector Operations for Agents 
+    '''
+
+    def vec_add(self, a, b):
+        return (a[0] + b[0], a[1] + b[1])
+
+    def vec_sub(self, a, b):
+        return (a[0] - b[0], a[1] - b[1])
+
+    def vec_mul(self, a, scalar):
+        return (a[0] * scalar, a[1] * scalar)
+
+    def vec_div(self, a, scalar):
+        if scalar == 0:
+            return (0.0, 0.0)
+        return (a[0] / scalar, a[1] / scalar)
+
+    def vec_length_squared(self, a):
+        return a[0]**2 + a[1]**2
+
+    def vec_length(self, a):
+        return math.sqrt(self.vec_length_squared(a))
+
+    def vec_normalize(self, a):
+        len_sq = self.vec_length_squared(a)
+        if len_sq > 0:
+            len_ = math.sqrt(len_sq)
+            return (a[0] / len_, a[1] / len_)
+        return (0.0, 0.0)
+
+    def vec_distance_squared(self, a, b):
+        return self. vec_length_squared(self.vec_sub(a, b))
+
+    def vec_distance(self, a, b):
+        return math.sqrt(self.vec_distance_squared(a, b))
+
+    def vec_scale_to_length(self, a, length):
+        norm = self.vec_normalize(a)
+        return self.vec_mul(norm, length)
+
+    def vec_from_polar(self, r, theta):
+        return (r * math.cos(theta), r * math.sin(theta))
+
+    def vec_to_polar(self, a):
+        return (self.vec_length(a), math.atan2(a[1], a[0]))
+
+    def vec_rotate(self, a, angle):
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        return (a[0] * cos_a - a[1] * sin_a, a[0] * sin_a + a[1] * cos_a)
+
+    # Helper to convert tuple to Vector2 (for Pygame-specific needs, e.g., some draw funcs)
+    def to_vector2(tup):
+        return pygame.Vector2(tup[0], tup[1])
+
+    '''
     Methods for Agent's Flocking Behavior
     '''
 
