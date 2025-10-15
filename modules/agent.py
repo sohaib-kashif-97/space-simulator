@@ -77,7 +77,7 @@ class Agent:
         self.memory_location = []                                           # To draw track
         self.color = (0, 0, 255)                                            # Blue color
         self.blackboard = {}                                                # Blackboard --> { BT Node: Comprises of an Agent's Local info including messages, tasks, etc}.
-        
+
         # Agent Kinematics and Dynamics Attributes
         self.position = torch.tensor(position, dtype=torch.float32, device= device)
         self.velocity = torch.zeros(2, dtype=torch.float32, device= device)
@@ -308,15 +308,14 @@ class Agent:
         # Initialzing variables relative to Cohesion Rule
         sum_vx, sum_vy = 0.0, 0.0
         avg_vx, avg_vy = 0.0, 0.0
-        agents_flocking_info = self.get_all_other_agents()    
-        count = len(agents_flocking_info)
+        count = len(self.agents_info)
         
         # If there are no agents in the simulation, skip onwards...
         if count == 0:
             return pygame.Vector2(0.0, 0.0)
         
         # Compute Center of Mass (CoM) w.r.t all the other agents
-        for other_agent in agents_flocking_info:
+        for other_agent in self.agents_info:
             sum_vx += other_agent.velocity.x
             sum_vy += other_agent.velocity.y
         avg_vx = sum_vx / count
@@ -523,8 +522,8 @@ class Agent:
         pos = self.get_pygame_position()
         
         # Draw assigned_task_id next to agent position
-        text_surface = font.render(f"agent_id: {self.agent_id}", True, (50, 50, 50))
-        screen.blit(text_surface, (pos[0] + 10, pos[1] - 10))
+        text_surface = font.render(f"Agent {self.agent_id}", True, (50, 50, 50))
+        screen.blit(text_surface, (self.position[0] + 10, self.position[1] - 10))
 
 
     def draw_assigned_task_id(self, screen):
@@ -638,22 +637,6 @@ class Agent:
         return local_agents_info
     
 
-    def get_all_other_agents(self):    # All of the agents that are nearby to the agent in subject in simulation
-        agents_info = [
-            other_agent
-            for other_agent in self.agents_info if other_agent.agent_id !=self.agent_id
-        ]
-        return agents_info
-    
-
-    def get_all_agents(self):           # All of the agents in simulation
-        agents_info = [
-            other_agent
-            for other_agent in self.agents_info 
-        ]
-        return agents_info
-
-   
     def get_tasks_nearby(self, radius = None, with_completed_task = True):
         _situation_awareness_radius = self.situation_awareness_radius if radius is None else radius
         if _situation_awareness_radius > 0:
@@ -681,10 +664,8 @@ class Agent:
                 ]                                                
         
         return local_tasks_info 
+
     
-
-
-
     # def locomotion_rule(self, blackboard, waypoint):
     #     self.current_flocking_waypoint = waypoint
     #     if waypoint is None:
@@ -696,9 +677,3 @@ class Agent:
     #         locomotion_vector.normalize_ip()
     #         locomotion_vector *= self.max_flocking_speed
     #     return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))    
-
-    # def agent_log(self):
-    #     print(f"Agent {self.agent_id} \n" +
-    #           f"Pos: ({self.position.x:.2f}, {self.position.y:.2f}) \n" +
-    #           f"Vel: ({self.velocity.x:.2f}, {self.velocity.y:.2f}) \n" +
-    #           f"Accel: ({self.acceleration.x:.2f}, {self.acceleration.y:.2f})", flush=True)

@@ -207,19 +207,16 @@ class FlockingNode(SyncAction):
                 self.flocking_move_time = 0.0 
             self.current_waypoint = blackboard['current_waypoint']
         else:
-            leader = next((a for a in agent.get_all_agents() if a.agent_id == self.leader_id), None)
+            leader = next((a for a in agent.agents_info if a.agent_id == self.leader_id), None)
             if leader and 'current_waypoint' in leader.blackboard:
                 self.current_waypoint = leader.blackboard['current_waypoint']
 
         # If not a leader, waypoint will be set w.r.t leader
         if 'current_waypoint' not in blackboard:
             blackboard['current_waypoint'] = self.current_waypoint
-            # print(blackboard['current_waypoint'])
-        
-        blackboard['current_waypoint'] = self.current_waypoint
-        # print(blackboard['current_waypoint'])
         
         # Implement Flocking Behavior with computed CoM and Waypoint
+        blackboard['current_waypoint'] = self.current_waypoint
         agent.flocking(blackboard) 
         
         # Update Flocking Timer
@@ -236,7 +233,7 @@ class FlockingNode(SyncAction):
 
 
     def get_com(self, agents):
-        flock_agents = agents.get_all_agents()
+        flock_agents = agents.agents_info
         count = len(flock_agents)
         if count == 0:
             return pygame.Vector2(0.0, 0.0)

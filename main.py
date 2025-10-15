@@ -131,8 +131,6 @@ async def game_loop():
             for agent in agents:
                 await agent.run_tree()    
                 agent.update()
-                # if agent.agent_id == 0:
-                #     agent.agent_log()
 
             # Status retrieval
             simulation_time += sampling_time
