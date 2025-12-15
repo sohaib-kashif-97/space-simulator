@@ -199,11 +199,12 @@ class FlockingNode(SyncAction):
         blackboard['CoM'] = self.get_com(agent)
 
         # Handle shared waypoint (leader sets, others follow).
+        waypoint = self.set_common_waypoint()
         if agent.agent_id == self.leader_id:
             if 'current_waypoint' not in blackboard:
-                blackboard['current_waypoint'] = self.set_common_waypoint()
+                blackboard['current_waypoint'] = waypoint
             elif self.flocking_move_time > flocking_waypoint_duration:
-                blackboard['current_waypoint'] = self.set_common_waypoint()
+                blackboard['current_waypoint'] = waypoint
                 self.flocking_move_time = 0.0 
             self.current_waypoint = blackboard['current_waypoint']
         else:

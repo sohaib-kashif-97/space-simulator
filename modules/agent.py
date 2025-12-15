@@ -123,6 +123,7 @@ class Agent:
     '''
     Methods interacting with Agent's Behavior Tree
     '''
+
     async def run_tree(self):
         #Asynchronoursly reset and then run BT (parse tree from xml file)
         self._reset_bt_action_node_status()
@@ -166,6 +167,7 @@ class Agent:
     '''
     Methods for Agent's Communication (Mechanisms to recieve messages from nearby agents)
     '''
+
     def reset_messages_received(self):
         self.messages_received = []
 
@@ -184,63 +186,6 @@ class Agent:
         self.messages_received.append(message)  
 
 
-
-    '''
-    Methods for Basic Vector Operations for Agents 
-    '''
-
-    def vec_add(self, a, b):
-        return (a[0] + b[0], a[1] + b[1])
-
-    def vec_sub(self, a, b):
-        return (a[0] - b[0], a[1] - b[1])
-
-    def vec_mul(self, a, scalar):
-        return (a[0] * scalar, a[1] * scalar)
-
-    def vec_div(self, a, scalar):
-        if scalar == 0:
-            return (0.0, 0.0)
-        return (a[0] / scalar, a[1] / scalar)
-
-    def vec_length_squared(self, a):
-        return a[0]**2 + a[1]**2
-
-    def vec_length(self, a):
-        return math.sqrt(self.vec_length_squared(a))
-
-    def vec_normalize(self, a):
-        len_sq = self.vec_length_squared(a)
-        if len_sq > 0:
-            len_ = math.sqrt(len_sq)
-            return (a[0] / len_, a[1] / len_)
-        return (0.0, 0.0)
-
-    def vec_distance_squared(self, a, b):
-        return self. vec_length_squared(self.vec_sub(a, b))
-
-    def vec_distance(self, a, b):
-        return math.sqrt(self.vec_distance_squared(a, b))
-
-    def vec_scale_to_length(self, a, length):
-        norm = self.vec_normalize(a)
-        return self.vec_mul(norm, length)
-
-    def vec_from_polar(self, r, theta):
-        return (r * math.cos(theta), r * math.sin(theta))
-
-    def vec_to_polar(self, a):
-        return (self.vec_length(a), math.atan2(a[1], a[0]))
-
-    def vec_rotate(self, a, angle):
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
-        return (a[0] * cos_a - a[1] * sin_a, a[0] * sin_a + a[1] * cos_a)
-
-    # Helper to convert tuple to Vector2 (for Pygame-specific needs, e.g., some draw funcs)
-    def to_vector2(tup):
-        return pygame.Vector2(tup[0], tup[1])
-
     '''
     Methods for Agent's Flocking Behavior
     '''
@@ -257,31 +202,38 @@ class Agent:
             locomotion_vel[0] + cohesion_vel[0] + alignment_vel[0] + separation_vel[0],
             locomotion_vel[1] + cohesion_vel[1] + alignment_vel[1] + separation_vel[1]
         )
-        if net_agent_vel.length() > 0:
-            net_agent_vel.normalize_ip()
-            net_agent_vel *= self.max_flocking_speed  
+        
+        # Computing Magnitude of the Net Velocity Vector
+        mag_vel = math.sqrt((net_agent_vel[0] ** 2) + (net_agent_vel[0] ** 2))
+
+        # Compute Unit Vector of Net Velocity Vector 
+        if mag_vel > 0:
+            net_agent_vel[0] = (net_agent_vel[0] / mag_vel) * self.max_flocking_speed
+            net_agent_vel[1] = (net_agent_vel[1] / mag_vel) * self.max_flocking_speed
+        else:
+            net_agent_vel = pygame.Vector2(0.0, 0.0)
         
         self.acceleration = (net_agent_vel - self.velocity) / sampling_time
         self.acceleration = self.limit(self.acceleration, self.max_flocking_accel)
 
 
-    # MODIFY: Hybridized Locomotion Integrated into the current Mechanism
     def locomotion_rule(self, blackboard):
 
         # Update the current flocking waypoint for visualization
         self.current_flocking_waypoint = blackboard['current_waypoint']
         
         if self.current_flocking_waypoint is None:
-            return pygame.Vector2(0.0, 0.0)
+            return (0.0, 0.0)
         
         # Calculating Distance to Waypoint
-        distance_to_waypoint = (self.current_flocking_waypoint - self.position).length()
+        dist = self.current_flocking_waypoint - self.position
+        distance_to_waypoint = (dist[0] ** 2) + (dist[1] ** 2) 
 
-        # Check if the agent has reached the waypoint, then stop and return SUCCESS
+        # Check if the agent has reached the waypoint, then stop commuting
         if distance_to_waypoint < (self.goal_radius/2):
             if self.agent_id == 0:
                 print(f"Agent {self.agent_id} reached the waypoint at {self.current_flocking_waypoint}.")
-            return pygame.Vector2(0.0, 0.0)
+            return (0.0, 0.0)
         
         # Change Separation Radius when close to waypoint
         if distance_to_waypoint < self.waypoint_transition_radius:
@@ -292,18 +244,18 @@ class Agent:
             self.sep_radius = min(self.sep_radius, max_sep_radius)  # Clamp to max_sep_radius
         
         # Compute Locomotion Vector from Mechanism 1 (CoM -> Waypoint)
-        l1_vector = pygame.Vector2(0.0, 0.0)
+        l1_vector = (0.0, 0.0)
         if blackboard['CoM'] and self.current_flocking_waypoint:
             l1_vector = self.current_flocking_waypoint - blackboard['CoM']
         else:
-            l1_vector = pygame.Vector2(0.0, 0.0)
+            l1_vector = (0.0, 0.0)
 
         # Compute Locomotion Vector from Mechanism 2 (Individual Point -> Waypoint)
-        l2_vector = pygame.Vector2(0.0, 0.0)
+        l2_vector = (0.0, 0.0)
         if self.current_flocking_waypoint:
             l2_vector = self.current_flocking_waypoint - self.position
         else:
-            l2_vector = pygame.Vector2(0.0, 0.0)
+            l2_vector = (0.0, 0.0)
 
         # Assess Weight for Locomotion Mechanism 2
         w2 = 0.0
@@ -317,22 +269,29 @@ class Agent:
         # Combine Locomotion Vectors with Weights
         locomotion_vector = (1 - w2) * l1_vector + w2 * l2_vector
 
-        return (round(locomotion_vector.x, 3), round(locomotion_vector.y, 3))
+        return (round(locomotion_vector[0], 3), round(locomotion_vector[1], 3))
 
 
     def cohesion_rule(self, blackboard):
         
         # Derive Unit Vector to move agents to their CoM
         cohesion_vector = blackboard['CoM'] - self.position
-        if cohesion_vector.length() > 0:
-            cohesion_vector.normalize_ip()
-
-        cohesion_vector = cohesion_vector * self.chn_weight
-        return (round(cohesion_vector.x, 3), round(cohesion_vector.y, 3))
+        
+        # Computing Magnitude of the Cohesion Vector
+        chn_vec_length = math.sqrt((cohesion_vector[0] ** 2) + (cohesion_vector[0] ** 2))
+        
+        if chn_vec_length > 0:
+            cohesion_vector[0] = (cohesion_vector[0] / chn_vec_length) * self.chn_weight
+            cohesion_vector[1] = (cohesion_vector[1] / chn_vec_length) * self.chn_weight
+            return (round(cohesion_vector[0], 3), round(cohesion_vector[1], 3))
+        else:
+            return (0.0, 0.0)
     
 
     def alignment_rule(self):
 
+        alignment_vector = pygame.Vector2(0.0, 0.0)
+        
         # Initialzing variables relative to Cohesion Rule
         sum_vx, sum_vy = 0.0, 0.0
         avg_vx, avg_vy = 0.0, 0.0
@@ -340,7 +299,7 @@ class Agent:
         
         # If there are no agents in the simulation, skip onwards...
         if count == 0:
-            return pygame.Vector2(0.0, 0.0)
+            return (0.0, 0.0)
         
         # Compute Center of Mass (CoM) w.r.t all the other agents
         for other_agent in self.agents_info:
@@ -349,21 +308,22 @@ class Agent:
         avg_vx = sum_vx / count
         avg_vy = sum_vy / count
 
-        alignment_vector = pygame.Vector2(avg_vx, avg_vy)
-        dist = alignment_vector.length()
+        # Computing Magnitude of Alignment Vector
+        aln_vec_length = math.sqrt((avg_vx ** 2) + (avg_vy ** 2))
 
         # Computing the Magnitude of the Average Velocity
-        if dist > 0:
-            alignment_vector = alignment_vector / dist
+        if aln_vec_length > 0:
+            alignment_vector[0] = (alignment_vector[0] / aln_vec_length) * self.aln_weight
+            alignment_vector[1] = (alignment_vector[1] / aln_vec_length) * self.aln_weight
 
-        alignment_vector = alignment_vector * self.aln_weight
-        return (round(alignment_vector.x, 3), round(alignment_vector.y, 3))
+        return (round(alignment_vector[0], 3), round(alignment_vector[1], 3))
     
 
     def separation_rule(self):
         
-        separation_vector = pygame.Vector2(0.0,0.0)
+        separation_vector = (0.0, 0.0)
         
+        # Identifying all Agents within the Separation Radius of Agent in subject
         local_agents_info = self.get_agents_nearby(self.sep_radius)
         total_nearby_agents = len(local_agents_info)
         count = 0
@@ -375,20 +335,25 @@ class Agent:
                 # Compute Vector Components away from the other boid
                 other_pos = other_agent.position
                 diff = self.position - other_pos
-                dist = diff.length()
+                dist = math.sqrt((diff[0] ** 2) + (diff[1] ** 2))
 
                 # If criteria has met, compute the heading vector
                 if 0 < dist <= self.sep_radius:
-                    diff /= dist  # Weight by distance
+                    
+                    # Weight by distance
+                    diff[0] = diff[0] / dist                            
+                    diff[1] = diff[1] / dist
+                    
                     separation_vector += diff
                     count += 1
         
+        # Computing Components based on Neighbors
         if count > 0:
-            vx = self.sep_weight * separation_vector.x * (1 + ((count + 1) / total_nearby_agents))
-            vy = self.sep_weight * separation_vector.y * (1 + ((count + 1) / total_nearby_agents))
+            vx = separation_vector[0] * self.sep_weight * (1 + ((count + 1) / total_nearby_agents))
+            vy = separation_vector[1] * self.sep_weight * (1 + ((count + 1) / total_nearby_agents))
         else:
-            vx = self.sep_weight * separation_vector.x
-            vy = self.sep_weight * separation_vector.y
+            vx = separation_vector[0] * self.sep_weight
+            vy = separation_vector[1] * self.sep_weight
 
         return (round(vx,3), round(vy,3))
 
@@ -397,6 +362,7 @@ class Agent:
     '''
     Methods for Agent's Kinematics
     '''
+
     def update(self):
         
         # Smooth Acceleration
@@ -413,7 +379,8 @@ class Agent:
         self.position += self.velocity * sampling_time
 
         # Calculate the distance moved in this update and add to distance_moved
-        self.distance_moved += self.velocity.length() * sampling_time
+        vel_mag = math.sqrt(self.velocity[0] ** 2 + self.velocity[1] ** 2)
+        self.distance_moved += vel_mag * sampling_time
         
         # Memory of positions to draw track
         self.memory_location.append((self.position.x, self.position.y))
@@ -421,8 +388,9 @@ class Agent:
             self.memory_location.pop(0)
 
         # Smooth rotation (turning) based on smoothed velocity direction
-        if self.velocity.length_squared() > 0:
-            target_rotation = math.atan2(self.velocity.y, self.velocity.x)
+        vel_mag_squared = self.velocity[0] ** 2 + self.velocity[1] ** 2
+        if vel_mag_squared > 0:
+            target_rotation = math.atan2(self.velocity[1], self.velocity[0])
         else:
             target_rotation = self.smoothed_rotation  # No change if stopped
         
